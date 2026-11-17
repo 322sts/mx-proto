@@ -23,7 +23,7 @@ on construit la physique dans ce prototype léger (compile + relance en quelques
 - Liaisons rigides par impulsions séquentielles (20 itérations, Baumgarte 0,2) : glissière de fourche, pivot de bras,
   butées de sécurité à débattement + 30 mm. Tout le reste = forces.
 - Fourche : ressort préchargé, amortissement compression/détente, cône anti-talonnage k·p².
-- Arrière : rapport de biellette linéaire en course roue (2,8 → 2,0), course amortisseur = ∫dx/LR, force roue = F_amorto/LR.
+- Arrière : rapport de biellette linéaire en course roue (2,8 → 1,85), course amortisseur = ∫dx/LR, force roue = F_amorto/LR.
 - Pneus : contact au point du sol le plus proche, ressort radial + amortissement + jante ; Fx = μ(glissement)·N,
   courbe terre (pic 1,1 à 20 %, puis décroissance vers 0,8) ; force bornée à celle qui annule le glissement en un pas (stabilité).
 - Pilote : corps relié aux repose-pieds et au guidon par ressorts-amortisseurs ; le stick décale les points d'attache
