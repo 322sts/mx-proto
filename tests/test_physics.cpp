@@ -81,6 +81,26 @@ TEST_CASE("gaz à fond, pilote sur l'avant : la moto accélère et traverse la p
     ride(sim, in, 20.0);
 }
 
+TEST_CASE("chaîne : l'arrière ne s'écrase pas et ne se détend pas en butée sous les gaz") {
+    const Terrain flat(-10, 0.05, std::vector<double>(4000, 0.0));
+    BikeSim sim;
+    sim.reset(BikeParams{}, flat, 0);
+    for (int i = 0; i < 1000; ++i) sim.step(Inputs{}, flat, 0.001);
+    const double sag = sim.state().rearTravel;
+    Inputs in;
+    in.throttle = 0.6;
+    double lo = sag, hi = sag;
+    for (int i = 0; i < 3000; ++i) {
+        sim.step(in, flat, 0.001);
+        lo = std::min(lo, sim.state().rearTravel);
+        hi = std::max(hi, sim.state().rearTravel);
+    }
+    MESSAGE("sag AR " << sag * 1000 << " mm, sous les gaz " << lo * 1000 << ".." << hi * 1000 << " mm");
+    CHECK(hi - sag < 0.03);
+    CHECK(sag - lo < 0.03);
+    CHECK(sim.state().chainTension > 0);
+}
+
 TEST_CASE("gaz en l'air : la roue AR accélère et la moto cabre") {
     BikeSim sim;
     sim.reset(BikeParams{}, track(), Terrain::kStartX);

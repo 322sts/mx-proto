@@ -35,8 +35,8 @@ struct BikeParams {
     double forkTravel = 0.300;          // m
     double forkSpringRate = 10800.0;    // N/m   2 ressorts de 0,55 kg/mm
     double forkPreload = 0.005;         // m     précharge ressort
-    double forkCompDamping = 1000.0;     // N.s/m compression
-    double forkRebDamping = 1600.0;     // N.s/m détente
+    double forkCompDamping = 2000.0;    // N.s/m compression
+    double forkRebDamping = 2500.0;     // N.s/m détente
     double forkBottomZone = 0.040;      // m     fin de course où agit le cône anti-talonnage
     double forkBottomStiffness = 1.5e7; // N/m²  F = k * enfoncement² (progressif, pas un mur)
 
@@ -46,8 +46,8 @@ struct BikeParams {
     double shockPreload = 0.008;        // m
     double linkRatioStart = 2.8;        // -     course roue / course amortisseur, détendu
     double linkRatioEnd = 1.85;         // -     en fin de course (plus bas = plus dur = progressif)
-    double shockCompDamping = 4000.0;   // N.s/m à la tige d'amortisseur, compression
-    double shockRebDamping = 8000.0;    // N.s/m détente
+    double shockCompDamping = 7000.0;   // N.s/m à la tige d'amortisseur, compression
+    double shockRebDamping = 11000.0;   // N.s/m détente
     double rearBottomZone = 0.035;      // m     zone de la butée (en course roue)
     double rearBottomStiffness = 1.5e7; // N/m²  à la roue
 
@@ -57,18 +57,24 @@ struct BikeParams {
     double tireDamping = 400.0;           // N.s/m amortissement radial
     double tireRimDeflection = 0.060;     // m     écrasement où la jante commence à taper
     double tireRimStiffness = 1.0e6;      // N/m   raideur ajoutée une fois sur la jante
-    double tirePeakMu = 1.10;             // -     adhérence max (terre)
+    double tirePeakMu = 0.85;             // -     adhérence max (terre)
     double tirePeakSlip = 0.20;           // -     taux de glissement au pic
-    double tireSlideMu = 0.80;            // -     adhérence en patinage / blocage complet
+    double tireSlideMu = 0.65;            // -     adhérence en patinage / blocage complet
     double tireSlipFalloff = 0.40;        // -     vitesse de baisse après le pic (en taux de glissement)
     double tireLowSpeed = 2.0;            // m/s   plancher du dénominateur du glissement (basse vitesse)
     double rollingResistance = 0.04;      // -     coefficient de résistance au roulement (terre)
 
-    // --- Moteur (rapport unique ; boîte/embrayage/anti-squat à une étape suivante) ---
+    // --- Moteur et transmission (rapport unique ; boîte/embrayage à une étape suivante) ---
     double engineMaxTorque = 50.0;    // N.m    couple vilebrequin au sommet de la courbe
     double engineRevLimit = 1257.0;   // rad/s  (12000 tr/min)
     double engineLaunchSpeed = 419.0; // rad/s  (4000 tr/min) embrayage virtuel qui patine en dessous
     double gearRatio = 13.0;          // -      rapport total vilebrequin -> roue AR
+    // Transmission finale par chaîne : sa tension tire le bras oscillant vers le pignon de sortie
+    // de boîte et retient l'arrière sous les gaz (anti-squat). La ligne de chaîne vs le pivot fixe l'effet.
+    double countershaftX = 0.61;        // m      pignon de sortie de boîte depuis l'axe AR (détendu)
+    double countershaftY = 0.18;        // m      (2 cm au-dessus du pivot : anti-squat ~100 % au sag)
+    double frontSprocketRadius = 0.033; // m      13 dents, chaîne 520
+    double rearSprocketRadius = 0.1265; // m      50 dents
     double engineInertia = 0.0025;    // kg.m²  vilebrequin + embrayage, ressenti x gearRatio² à la roue
     double engineBrakeTorque = 8.0;   // N.m    couple vilebrequin au rupteur, gaz fermés
     double dragArea = 0.55;           // m²     Cx * surface frontale moto + pilote

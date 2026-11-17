@@ -41,3 +41,36 @@ petit saut : fourche 236 mm.
 - « La moto lève » : en accélération (wheelie) ou en sortie de bosse / lèvre de saut (coup de pied) ?
 - Note : l'anti-squat (la tension de chaîne qui empêche l'arrière de s'écraser aux gaz) n'est pas encore
   modélisé (étape boîte/embrayage). C'est une part réelle du « ça s'assoit et ça lève » à l'accélération.
+
+### 2026-11-17 — Encore trop mou partout, la moto lève aux gaz sur le plat
+**Ressenti :**
+- Trop mou : réceptions, whoops, freinage, accélération.
+- Ça lève : aux gaz, sur le plat (wheelie, la moto s'assoit).
+
+**Diagnostic (banc de mesure) :**
+- La chaîne n'existait pas : le couple moteur était appliqué au cadre comme un couple pur qui lève le nez.
+  À 60 % de gaz l'AR s'écrasait de 76 à 128 mm ; gaz à fond, la roue AV décollait en 0,04 s et la moto bouclait,
+  même pilote couché sur le guidon, même lancée à 40 km/h.
+- Adhérence μ 1,1 : assez pour boucler en accélération et passer par-dessus le guidon au frein AV.
+- Amortissement en compression faible : chute à plat de 0,5 m = 60 % du débattement ; fourche qui plonge de 200 mm au freinage.
+
+**Modifications :**
+- code : chaîne (brin supérieur) entre la couronne et le pignon de sortie de boîte. Sa tension tire l'axe AR vers
+  l'avant -> couple qui détend le bras autour du pivot (anti-squat) ; la réaction va au cadre au pignon (tend à
+  baisser le nez au lieu de le lever). Nouveaux réglages : position du pignon de sortie, rayons pignon/couronne.
+- `countershaftY` = 180 mm (2 cm au-dessus du pivot) : à 140 mm l'anti-squat était trop fort, l'AR se détendait en butée gaz à fond.
+- `tirePeakMu` 1,10 → 0,85, `tireSlideMu` 0,80 → 0,65 — valeurs de crampons sur terre ; la roue AR patine au lieu de faire boucler la moto.
+- `forkCompDamping` 1000 → 2000, `forkRebDamping` 1600 → 2500 N.s/m — la fourche plonge moins vite au freinage et à la réception.
+- `shockCompDamping` 4000 → 7000, `shockRebDamping` 8000 → 11000 N.s/m — idem à l'AR ; la détente reste plus freinée que la compression.
+
+**Mesures après :**
+- Gaz 60 % depuis l'arrêt : AR 74..86 mm (sag 76) au lieu de 128 ; gaz à fond pilote neutre : cabrage 6°, plus de looping.
+- Gaz à fond lancé à 40 km/h : pilote neutre = la moto lève (au pilote de se mettre sur l'avant) ; pilote en avant = 1 à 5°.
+- Chute à plat 0,5 m : fourche 131 / AR 151 mm (au lieu de 183 / 181) ; 1,5 m : 190 / 228 (au lieu de 271 / 265).
+- Frein AV 60 % à 50 km/h : plongée fourche 162 mm (au lieu de 200) ; frein AV 100 % : plus de passage par-dessus le guidon.
+
+**À revérifier :**
+- La moto lève-t-elle encore trop aux gaz ? Est-ce qu'elle patine trop maintenant (adhérence) ?
+- Fermeté : assez ? Les grosses réceptions sont-elles devenues sèches (l'amortissement est linéaire : plus ferme
+  partout, y compris sur les gros chocs ; si c'est sec, prochaine étape = amortisseur dégressif basse/haute vitesse).
+- Les anciens presets (`presets/tes.ini`) gardent les anciennes valeurs.

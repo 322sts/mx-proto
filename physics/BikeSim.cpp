@@ -84,6 +84,7 @@ void BikeSim::reset(const BikeParams& p, const Terrain& terrain, double x) {
     L_.skidPlate = Vec2{pivot.x + 0.20, -0.05} - com;      // sabot moteur
     L_.rearFender = Vec2{-0.35, 0.62} - com;               // bout de garde-boue AR
     L_.seat = Vec2{0.40, 0.62} - com;
+    L_.countershaft = Vec2{p.countershaftX, p.countershaftY} - com;
     L_.forkAxle = frontAxle - forkCom;
     L_.swingPivot = pivot - swingCom;
     L_.swingAxle = rearAxle - swingCom;
@@ -265,8 +266,8 @@ void BikeSim::step(const Inputs& raw, const Terrain& terrain, double dt) {
     tire(s_.front, F, F.toWorld(L_.forkAxle), p.tireStiffnessFront, Iwf, terrain, dt, tqF);
     tire(s_.rear, S, S.toWorld(L_.swingAxle), p.tireStiffnessRear, Iwr, terrain, dt, tqR);
 
-    // --- Moteur --- couple à la roue AR, réaction sur le châssis (pignon de sortie de boîte).
-    // Emplacement futur : boîte, embrayage, tension de chaîne / anti-squat.
+    // --- Moteur --- couple à la roue AR transmis par la chaîne.
+    // Emplacement futur : boîte, embrayage.
     {
         const double wheelRel = -(s_.rear.spin - C.angVel); // rotation "en avant" de la roue / châssis
         const double we = wheelRel * p.gearRatio;
@@ -276,7 +277,23 @@ void BikeSim::step(const Inputs& raw, const Terrain& terrain, double dt) {
         if (we > 0) crank -= (1 - in.throttle) * p.engineBrakeTorque * std::min(we / p.engineRevLimit, 1.0);
         const double wheelTorque = crank * p.gearRatio;
         tqR -= wheelTorque; // rouler en avant = rotation horaire = couple négatif
-        C.torque += wheelTorque;
+
+        // Chaîne : brin supérieur tendu entre le haut de la couronne et le haut du pignon.
+        // Tension T = couple roue / bras de levier de la ligne de chaîne autour de l'axe AR.
+        // Elle tire l'axe AR (donc le bras) vers le pignon -> couple qui détend le bras autour
+        // du pivot = anti-squat ; la réaction (-T) s'applique au cadre au pignon de sortie.
+        // La somme des couples (roue + bras + cadre) est nulle : la chaîne est interne à la moto.
+        // shortcut: brin supérieur seul, même en frein moteur (T < 0) ; brin inférieur à l'étape boîte.
+        const Vec2 axle = S.toWorld(L_.swingAxle);
+        const Vec2 rearTop = axle + rotate(Vec2{0, p.rearSprocketRadius}, C.angle);
+        const Vec2 frontTop = C.toWorld(L_.countershaft + Vec2{0, p.frontSprocketRadius});
+        const Vec2 chain = frontTop - rearTop;
+        const Vec2 e = chain / length(chain);
+        const double arm = -cross(rearTop - axle, e); // distance axe AR -> ligne de chaîne (> 0)
+        const double T = wheelTorque / arm;
+        S.applyForce(e * T, axle);
+        C.applyForce(-e * T, frontTop);
+        s_.chainTension = T;
         s_.engineSpeed = we;
     }
 

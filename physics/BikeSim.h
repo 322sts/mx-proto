@@ -34,6 +34,7 @@ struct BikeState {
     double rearTravel = 0, rearSpeed = 0; // m, m/s à la roue AR
     double shockStroke = 0;               // m      course de l'amortisseur
     double engineSpeed = 0;               // rad/s  vilebrequin
+    double chainTension = 0;              // N      brin supérieur
     double speed = 0;                     // m/s    vitesse du châssis
     double riderLean = 0;                 // m      déplacement actuel du corps du pilote
     Inputs inputs;                        // commandes du dernier pas
@@ -43,7 +44,7 @@ struct BikeState {
 struct BikeLayout {
     // Châssis
     Vec2 rearAxle, pivot, frontAxle, steeringHead, pegs, bars, shockTop, forkAxis;
-    Vec2 skidPlate, rearFender, seat;
+    Vec2 skidPlate, rearFender, seat, countershaft;
     // Fourche et bras
     Vec2 forkAxle, swingPivot, swingAxle;
     // Pilote

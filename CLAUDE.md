@@ -25,11 +25,12 @@ on construit la physique dans ce prototype léger (compile + relance en quelques
 - Fourche : ressort préchargé, amortissement compression/détente, cône anti-talonnage k·p².
 - Arrière : rapport de biellette linéaire en course roue (2,8 → 1,85), course amortisseur = ∫dx/LR, force roue = F_amorto/LR.
 - Pneus : contact au point du sol le plus proche, ressort radial + amortissement + jante ; Fx = μ(glissement)·N,
-  courbe terre (pic 1,1 à 20 %, puis décroissance vers 0,8) ; force bornée à celle qui annule le glissement en un pas (stabilité).
+  courbe terre (pic 0,85 à 20 %, puis décroissance vers 0,65) ; force bornée à celle qui annule le glissement en un pas (stabilité).
 - Pilote : corps relié aux repose-pieds et au guidon par ressorts-amortisseurs ; le stick décale les points d'attache
   (±25 cm, vitesse limitée) → vrai transfert de poids.
 - Moteur : courbe couple/régime, rapport unique 13:1, embrayage virtuel qui patine sous 4000 tr/min, frein moteur,
-  inertie vilebrequin ramenée à la roue. Freins : frottement implicite roue/porteur (blocage propre).
+  inertie vilebrequin ramenée à la roue. Chaîne : tension = couple roue / bras de levier, tire l'axe AR vers le pignon
+  de sortie de boîte (anti-squat qui émerge de la géométrie), réaction sur le cadre au pignon. Freins : frottement implicite roue/porteur (blocage propre).
 - Boucle : pas fixe 1 ms (1000 Hz), Euler semi-implicite, accumulateur séparé du rendu, max 50 sous-pas par image.
 
 ## Conventions
@@ -59,7 +60,7 @@ P pause · T ralenti x0,25 · F1 panneau · molette zoom.
 1. ~~Prototype 2D jouable~~ (fait)
 2. 3D avec direction et inclinaison latérale
 3. Pilote sur 2 axes (avant/arrière + gauche/droite, haut/bas)
-4. Boîte de vitesses + embrayage + tension de chaîne / anti-squat
+4. Boîte de vitesses + embrayage (+ brin inférieur de chaîne en frein moteur)
 5. Terrain déformable (ornières, terre qui se creuse)
 6. Enregistrement / relecture des descentes
 7. Intégration Unreal Engine 5
