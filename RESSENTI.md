@@ -152,3 +152,26 @@ roue ralentit, le nez descend. L'effet = inertie de la roue × variation de sa v
 
 **À revérifier :**
 - Entrée de virage : bonne, encore trop vive, trop molle ?
+
+### 2026-11-17 — 3D : encore beaucoup trop vif, guidon qui tourne seul à l'arrêt, retour trop fort
+**Ressenti :**
+- Entrée de virage encore beaucoup trop vive.
+- Le guidon tourne tout seul à l'arrêt.
+- Quand on braque d'un côté, ça revient trop fort de l'autre.
+
+**Diagnostic :** à l'arrêt, le pilote simulé cherchait à pencher la moto en braquant (impossible sans vitesse) :
+le moindre stick envoyait le guidon en butée à 40 N.m, et à basse vitesse il claquait d'une butée à l'autre.
+En roulant, relâcher le stick ne fait pas dépasser de l'autre côté (mesuré : 0°).
+
+**Modifications :**
+- code : sous `footDownSpeed` (fondu sur 2 m/s), le pilote tient le guidon à l'angle demandé par le stick
+  (`riderBarHold` 30 N.m/rad) au lieu de chercher l'inclinaison. Stick au repos à l'arrêt = guidon droit.
+- `riderMaxRollRate` 46 → 29°/s, `riderLeanResponse` 2,5 → 1,5 /s : bascule deux fois plus calme qu'au départ.
+- `riderSteerGain` 60 → 80 : tient l'inclinaison finale (36-37° pour 34° visés).
+
+**Mesures après :** stick à fond : 90 % de l'inclinaison en ~1,6 s (1,0 avant, 0,4-0,8 à l'origine) ; relâché :
+moto droite en 2-2,5 s sans dépasser ; à l'arrêt stick à fond : guidon en butée du côté demandé, couple ~0 une fois arrivé.
+
+**À revérifier :**
+- Vivacité : encore trop vif, ou trop lent maintenant ? Le « revient trop fort » est-il réglé ?
+- Manœuvres à basse vitesse (départ, demi-tour).

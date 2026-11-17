@@ -352,7 +352,13 @@ void BikeSim::step(const Inputs& raw, const Terrain& terrain, double dt) {
         // file sous la moto, elle tombe à droite = contre-braquage, non programmé.
         const double want = in.steer * p.riderMaxLean;
         const double rate = clampd(p.riderLeanResponse * (want - lean), -p.riderMaxRollRate, p.riderMaxRollRate);
-        const double tauRider = clampd(p.riderSteerGain * (rate - leanRate), -p.riderMaxSteerTorque, p.riderMaxSteerTorque);
+        const double tauLean = p.riderSteerGain * (rate - leanRate);
+        // À basse vitesse, braquer ne fait plus pencher la moto (les pieds l'équilibrent) : le
+        // pilote tient simplement le guidon à l'angle demandé par le stick (droite = braque à droite).
+        // Passage progressif d'un mode à l'autre entre footDownSpeed et footDownSpeed + 2 m/s.
+        const double tauHold = p.riderBarHold * (-in.steer * p.steerLock - delta) - 0.1 * p.riderBarHold * deltaDot;
+        const double w = clampd((s_.speed - p.footDownSpeed) / 2.0, 0, 1);
+        const double tauRider = clampd(w * tauLean + (1 - w) * tauHold, -p.riderMaxSteerTorque, p.riderMaxSteerTorque);
         const double tau = tauRider - p.steerDamping * deltaDot;
         F.torque += u * tau;
         C.torque -= u * tau;

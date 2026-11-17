@@ -36,6 +36,7 @@ on construit la physique dans ce prototype léger (compile + relance en quelques
   le stick décale les points d'attache (±25 cm, vitesse limitée) → vrai transfert de poids.
   Direction : le stick gauche donne l'inclinaison visée (±34°) ; le pilote simulé pousse sur le guidon (couple autour
   de l'axe, max 40 N.m) pour suivre une vitesse de bascule voulue → le contre-braquage émerge, rien n'est imposé.
+  Sous 3 m/s (fondu jusqu'à 5 m/s), il tient le guidon à l'angle demandé par le stick (droite = braque à droite).
   Pied à terre sous 3 m/s (contacts ressort aux pieds, ne portent que si la moto penche).
 - Moteur : courbe couple/régime, rapport unique 13:1, embrayage virtuel qui patine sous 4000 tr/min, frein moteur,
   inertie vilebrequin ramenée à la roue. Chaîne : tension = couple roue / bras de levier, tire l'axe AR vers le pignon

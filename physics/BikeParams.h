@@ -114,10 +114,11 @@ struct BikeParams {
     // Le pilote vise l'inclinaison demandée en poussant sur le guidon (couple autour de l'axe
     // de direction) : le contre-braquage n'est pas programmé, il sort de la physique.
     double riderMaxLean = 0.60;         // rad    inclinaison visée stick à fond (34° ; tan = 0,67 < mu : marge avant la glisse)
-    double riderLeanResponse = 2.5;     // 1/s    vitesse de bascule voulue par radian d'écart d'inclinaison
-    double riderMaxRollRate = 0.8;      // rad/s  bascule la plus rapide qu'il s'autorise (~46°/s)
-    double riderSteerGain = 60.0;       // N.m.s/rad couple au guidon par rad/s d'écart de vitesse de bascule
+    double riderLeanResponse = 1.5;     // 1/s    vitesse de bascule voulue par radian d'écart d'inclinaison
+    double riderMaxRollRate = 0.5;      // rad/s  bascule la plus rapide qu'il s'autorise (~29°/s)
+    double riderSteerGain = 80.0;       // N.m.s/rad couple au guidon par rad/s d'écart de vitesse de bascule
     double riderMaxSteerTorque = 40.0;  // N.m    force max dans le guidon
+    double riderBarHold = 30.0;         // N.m/rad à basse vitesse : il tient le guidon à l'angle du stick
     double footDownSpeed = 3.0;         // m/s    en dessous, le pilote pose les pieds
 };
 

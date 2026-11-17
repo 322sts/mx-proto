@@ -99,6 +99,7 @@ const ParamInfo kTable[] = {
     {RI, "riderMaxRollRate", "Guidon : bascule max", &P::riderMaxRollRate, 0.5, 3, DEG, "%.0f°/s", false},
     {RI, "riderSteerGain", "Guidon : fermeté", &P::riderSteerGain, 10, 120, 1, "%.0f N.m.s/rad", false},
     {RI, "riderMaxSteerTorque", "Guidon : couple max", &P::riderMaxSteerTorque, 10, 100, 1, "%.0f N.m", false},
+    {RI, "riderBarHold", "Guidon tenu à basse vitesse", &P::riderBarHold, 5, 100, 1, "%.0f N.m/rad", false},
     {RI, "footDownSpeed", "Pied à terre sous", &P::footDownSpeed, 0, 6, 3.6, "%.0f km/h", false},
 
     {EN, "engineMaxTorque", "Couple max", &P::engineMaxTorque, 10, 80, 1, "%.0f N.m", false},
