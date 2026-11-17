@@ -175,3 +175,25 @@ moto droite en 2-2,5 s sans dépasser ; à l'arrêt stick à fond : guidon en bu
 **À revérifier :**
 - Vivacité : encore trop vif, ou trop lent maintenant ? Le « revient trop fort » est-il réglé ?
 - Manœuvres à basse vitesse (départ, demi-tour).
+
+### 2026-11-18 — 3D : plus du tout réactif, il faut tenir le stick longtemps, et on tombe
+**Ressenti :**
+- Plus du tout réactif : il faut appuyer longtemps sur le stick, et au final on tombe.
+
+**Diagnostic (banc, virages serrés stick à fond) :** chute à chaque fois entre ~5 et 18 km/h. Le mode « guidon
+tenu » (prévu pour l'arrêt) prenait le relais dès 3-5 m/s : stick à fond = butée de braquage alors que la moto
+roule -> elle tombe vers l'extérieur, ou vers l'intérieur quand on ralentit en gardant 34° d'inclinaison
+(à basse vitesse ce virage demanderait un rayon plus serré que la butée ne le permet).
+
+**Modifications :**
+- code : le pilote équilibre par le guidon jusqu'à l'allure du pas ; « guidon tenu » seulement sous ~1,5 m/s.
+- code : inclinaison visée limitée par la vitesse, tan φ ≤ v²/(g·R_min), R_min = 1,5 x empattement / tan(butée).
+- `footDownSpeed` 3 → 1,5 m/s (pieds posés sous ~5 km/h seulement).
+- `riderMaxRollRate` 29 → 40°/s, `riderLeanResponse` 1,5 → 2,2 : entre « trop vif » (46°/s) et « pas réactif » (29°/s).
+
+**Mesures après :** stick à fond : 90 % de l'inclinaison en 1,1-1,2 s ; virages serrés de 11 à 36 km/h,
+vitesse tenue ou gaz coupés jusqu'à l'arrêt : aucune chute (avant : chute de 11 à 25 km/h gaz coupés).
+
+**À revérifier :**
+- Réactivité : bon compromis ? (curseur F1 > Pilote > « Guidon : bascule max » pour l'ajuster en direct)
+- Virages serrés lents (épingle, berm) : on passe sans tomber ?

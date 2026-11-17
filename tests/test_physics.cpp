@@ -191,6 +191,23 @@ TEST_CASE("contre-braquage : pour pencher à droite, le guidon part d'abord à g
     CHECK(sim.state().leanAngle > 0.3);   // puis la moto penche à droite
 }
 
+TEST_CASE("virage serré en coupant les gaz jusqu'à l'arrêt : la moto ne tombe pas") {
+    for (double v : {4.0, 5.0, 7.0}) {
+        CAPTURE(v);
+        BikeSim sim;
+        launch(sim, v);
+        Inputs in;
+        in.steer = 1; // stick à fond, gaz coupés : elle ralentit en virage jusqu'à s'arrêter
+        double maxLean = 0;
+        for (int i = 0; i < 6000; ++i) {
+            sim.step(in, flat(), 0.001);
+            maxLean = std::max(maxLean, std::abs(sim.state().leanAngle));
+        }
+        CHECK(maxLean < 0.75);
+        CHECK(sim.state().speed < 0.5);
+    }
+}
+
 TEST_CASE("réglages extrêmes : chaque curseur à ses bornes reste stable") {
     for (const ParamInfo& info : paramTable()) {
         for (double v : {info.min, info.max}) {

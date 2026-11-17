@@ -355,14 +355,19 @@ void BikeSim::step(const Inputs& raw, const Terrain& terrain, double dt) {
         // voulue (plafonnée), puis il pousse sur le guidon pour suivre cette vitesse. Pour pencher à
         // droite il pousse le guidon vers la gauche (couple > 0) : la roue part à gauche, le contact
         // file sous la moto, elle tombe à droite = contre-braquage, non programmé.
-        const double want = in.steer * p.riderMaxLean;
+        // Un virage stable à l'inclinaison φ a un rayon v²/(g tan φ) ; il ne peut pas être plus serré
+        // que ce que permet la butée de braquage (R_min ≈ 1,5 x empattement / tan(butée effective)).
+        // Le pilote penche donc moins quand il va lentement, sinon la moto tombe à l'intérieur.
+        const double rMin = 1.5 * p.wheelbase / std::tan(p.steerLock * std::cos(p.rakeAngle));
+        const double leanCap = std::min(p.riderMaxLean, std::atan(s_.speed * s_.speed / (kGravity * rMin)));
+        const double want = clampd(in.steer * p.riderMaxLean, -leanCap, leanCap);
         const double rate = clampd(p.riderLeanResponse * (want - lean), -p.riderMaxRollRate, p.riderMaxRollRate);
         const double tauLean = p.riderSteerGain * (rate - leanRate);
-        // À basse vitesse, braquer ne fait plus pencher la moto (les pieds l'équilibrent) : le
-        // pilote tient simplement le guidon à l'angle demandé par le stick (droite = braque à droite).
-        // Passage progressif d'un mode à l'autre entre footDownSpeed et footDownSpeed + 2 m/s.
+        // Presque à l'arrêt (pieds posés), braquer ne fait plus pencher la moto : le pilote tient
+        // simplement le guidon à l'angle demandé par le stick (droite = braque à droite). Dès qu'elle
+        // roule (au-delà de ~1,5 m/s) il équilibre de nouveau par le guidon, comme un vrai pilote au pas.
         const double tauHold = p.riderBarHold * (-in.steer * p.steerLock - delta) - 0.1 * p.riderBarHold * deltaDot;
-        const double w = clampd((s_.speed - p.footDownSpeed) / 2.0, 0, 1);
+        const double w = clampd(s_.speed - 0.5, 0, 1);
         const double tauRider = clampd(w * tauLean + (1 - w) * tauHold, -p.riderMaxSteerTorque, p.riderMaxSteerTorque);
         const double tau = tauRider - p.steerDamping * deltaDot;
         F.torque += u * tau;

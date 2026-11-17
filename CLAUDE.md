@@ -19,7 +19,7 @@ on construit la physique dans ce prototype léger (compile + relance en quelques
 - `sandbox/Render.h/.cpp` — rendu raylib : shader soleil + ciel + brume (GLSL en texte), terrain en blocs avec herbe/terre/grain,
   décor (piquets, bottes de paille, grille de départ, arbres), ombre de la moto, moto et pilote détaillés. Dessin seulement.
 - `tests/` — doctest : terrain lisse, repos sans vibration, accélération, ligne droite, anti-squat, gaz en l'air,
-  virage établi (tan φ = v²/gR), contre-braquage émergent, chaque curseur à ses bornes.
+  virage établi (tan φ = v²/gR), contre-braquage émergent, virage serré jusqu'à l'arrêt sans chute, chaque curseur à ses bornes.
 - Dépendances via FetchContent, versions épinglées : raylib 5.5, imgui 1.93.0, implot 1.1, rlImGui @5c17e70, doctest 2.5.3.
 
 ## Modèle physique (étape 2, 3D)
@@ -39,8 +39,9 @@ on construit la physique dans ce prototype léger (compile + relance en quelques
   le stick décale les points d'attache (±25 cm, vitesse limitée) → vrai transfert de poids.
   Direction : le stick gauche donne l'inclinaison visée (±34°) ; le pilote simulé pousse sur le guidon (couple autour
   de l'axe, max 40 N.m) pour suivre une vitesse de bascule voulue → le contre-braquage émerge, rien n'est imposé.
-  Sous 3 m/s (fondu jusqu'à 5 m/s), il tient le guidon à l'angle demandé par le stick (droite = braque à droite).
-  Pied à terre sous 3 m/s (contacts ressort aux pieds, ne portent que si la moto penche).
+  Il penche moins quand il va lentement (tan φ ≤ v²/(g·R_min), R_min tiré de la butée de braquage).
+  Presque à l'arrêt (< 1,5 m/s), il tient le guidon à l'angle demandé par le stick (droite = braque à droite).
+  Pied à terre sous 1,5 m/s (contacts ressort aux pieds, ne portent que si la moto penche).
 - Moteur : courbe couple/régime, rapport unique 13:1, embrayage virtuel qui patine sous 4000 tr/min, frein moteur,
   inertie vilebrequin ramenée à la roue. Chaîne : tension = couple roue / bras de levier, tire l'axe AR vers le pignon
   de sortie de boîte (anti-squat qui émerge de la géométrie), réaction sur le cadre au pignon. Freins : frottement implicite roue/porteur (blocage propre).
