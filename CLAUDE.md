@@ -13,13 +13,14 @@ on construit la physique dans ce prototype léger (compile + relance en quelques
     `Inputs`, et `paramTable()` (libellés, bornes stables, unité d'affichage) utilisé par l'UI, les presets et les tests.
   - `Terrain.h/.cpp` : carte de hauteurs h(x, z) (mailles 10 cm, bicubique Catmull-Rom C1), normale, circuit de test
     en boucle (~420 m, piste de 8 m : double, table, berms, virage à plat, chicane, rouleaux, whoops) généré par une
-    « tortue » + profil le long de la ligne médiane ; points de départ nommés (`spawns()`), `makeFlat()` pour les tests.
+    « tortue » + profil le long de la ligne médiane ; berms en cuvette sur toute la largeur, relevés 8 m avant et après ; points de départ nommés (`spawns()`), `makeFlat()` pour les tests.
   - `BikeSim.h/.cpp` : `reset(params, terrain, x, z, yaw)` ou `reset(params, terrain, spawn)`, `step(inputs, terrain, dt)`, `state()`, `layout()`.
 - `sandbox/main.cpp` — jeu de test : boucle, manette/clavier, caméra, Dear ImGui via rlImGui (réglages), ImPlot (courbes).
 - `sandbox/Render.h/.cpp` — rendu raylib : shader soleil + ciel + brume (GLSL en texte), terrain en blocs avec herbe/terre/grain,
   décor (piquets, bottes de paille, grille de départ, arbres), ombre de la moto, moto et pilote détaillés. Dessin seulement.
 - `tests/` — doctest : terrain lisse, repos sans vibration, accélération, ligne droite, anti-squat, gaz en l'air,
-  virage établi (tan φ = v²/gR), contre-braquage émergent, virage serré jusqu'à l'arrêt sans chute, chaque curseur à ses bornes.
+  virage établi (tan φ = v²/gR), contre-braquage émergent, virage serré jusqu'à l'arrêt sans chute, berm passé stick
+  à fond, chaque curseur à ses bornes.
 - Dépendances via FetchContent, versions épinglées : raylib 5.5, imgui 1.93.0, implot 1.1, rlImGui @5c17e70, doctest 2.5.3.
 
 ## Modèle physique (étape 2, 3D)
@@ -38,9 +39,10 @@ on construit la physique dans ce prototype léger (compile + relance en quelques
 - Pilote : corps relié aux 2 repose-pieds et aux 2 poignées par ressorts-amortisseurs + gainage roulis/lacet (genoux) ;
   le stick décale les points d'attache (±25 cm, vitesse limitée) → vrai transfert de poids.
   Direction : le stick gauche demande une courbure de virage (à fond = le plus serré possible : butée de braquage
-  lente, 34° d'inclinaison vite). Le pilote simulé en déduit l'angle de guidon par le pendule inversé
+  lente, 34° d'inclinaison PAR RAPPORT AU SOL vite → dans un berm penché de β il penche de 34° + β). Le pilote simulé en déduit l'angle de guidon par le pendule inversé
   (δe = L/v² (h φ''_voulu − g tan φ) : virage établi + équilibre) et le tient avec ses bras (ressort 250 N.m/rad) ;
   la chasse, le gyroscope et les pneus agissent toujours → le contre-braquage émerge, rien n'est imposé.
+  Angle de guidon plafonné à ce qui sert à cette vitesse (1,5 x virage le plus serré + 3°) : pas de guidonnage.
   Presque à l'arrêt (< 1,5 m/s), il tourne simplement le guidon comme le stick (droite = braque à droite).
   Pied à terre sous 1,5 m/s (contacts ressort aux pieds, ne portent que si la moto penche).
 - Moteur : courbe couple/régime, rapport unique 13:1, embrayage virtuel qui patine sous 4000 tr/min, frein moteur,

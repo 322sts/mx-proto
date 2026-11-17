@@ -356,7 +356,16 @@ void BikeSim::step(const Inputs& raw, const Terrain& terrain, double dt) {
         // d'équilibre de ce virage est tan φ* = v² κ / g.
         const double v = std::max(s_.speed, 1.0), L = p.wheelbase;
         const double rMin = 1.5 * L / std::tan(p.steerLock * std::cos(p.rakeAngle)); // virage le plus serré tenable
-        const double kappa = in.steer * std::min(1.0 / rMin, kGravity * std::tan(p.riderMaxLean) / (v * v));
+        // Dévers du sol sous les roues (berm) : l'adhérence limite l'inclinaison par rapport au SOL,
+        // pas à la verticale. Dans un berm penché de β vers l'intérieur, il peut pencher de
+        // riderMaxLean + β et tourner bien plus serré : c'est tout l'intérêt d'un virage relevé.
+        Vec3 nGround{};
+        for (const WheelState* w : {&s_.front, &s_.rear})
+            if (w->contact) nGround += w->normal;
+        nGround = length(nGround) > 0.5 ? normalize(nGround) : kY;
+        const double bank = std::atan2(dot(nGround, rightH), nGround.y); // + = sol penché vers la droite
+        const double maxLean = clampd(p.riderMaxLean + (in.steer >= 0 ? bank : -bank), 0.0, 1.2);
+        const double kappa = in.steer * std::min(1.0 / rMin, kGravity * std::tan(maxLean) / (v * v));
         const double want = std::atan(v * v * kappa / kGravity);
         // Il choisit une bascule voulue (vitesse de roulis plafonnée), d'où une accélération de roulis
         // voulue, et en déduit l'angle de guidon par le modèle du pendule inversé sur ses roues :
@@ -373,8 +382,12 @@ void BikeSim::step(const Inputs& raw, const Terrain& terrain, double dt) {
         // rendrait trop faible face aux efforts de la roue AV sur le guidon (chasse, gyroscope, pneu),
         // et l'inclinaison dériverait au-delà de la cible. Un pilote corrige plus fermement que le modèle.
         const double vFb = std::min(v, 7.0);
+        // Il ne met jamais plus de guidon que ce qui sert à cette vitesse : 1,5 x le braquage du virage le
+        // plus serré tenable, + 3° pour l'équilibre. Sans cette limite, avant délesté (entrée de berm sur
+        // les gaz), il braquait de 25° à 40 km/h et la moto partait en guidonnage.
+        const double deltaMax = std::min(p.steerLock, 1.5 * L * kGravity * std::tan(maxLean) / (v * v * std::cos(p.rakeAngle)) + 0.05);
         const double deltaLean = clampd(((L / (vFb * vFb)) * h * rollAcc - (L / (v * v)) * kGravity * std::tan(clampd(lean, -1.2, 1.2))) / std::cos(p.rakeAngle),
-                                        -p.steerLock, p.steerLock);
+                                        -deltaMax, deltaMax);
         // Presque à l'arrêt (pieds posés), braquer ne fait plus pencher la moto : il tourne simplement
         // le guidon comme demandé par le stick (droite = braque à droite).
         const double w = clampd(s_.speed - 0.5, 0, 1);

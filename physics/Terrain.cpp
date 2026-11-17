@@ -64,16 +64,14 @@ Terrain Terrain::makeTestTrack() {
     // sont calculées pour que la boucle se referme exactement sur le départ (0, 0, cap +x).
     constexpr double ds = 0.1;
     std::vector<TrackPoint> path;
-    std::vector<double> bermH; // hauteur de berm (côté extérieur) à chaque point
+    struct Berm { double s0, s1, H; int side; }; // virage relevé : abscisses, hauteur, côté extérieur (-1 = gauche)
+    std::vector<Berm> berms;
     double x = 0, z = 0, th = 0, s = 0;
-    auto push = [&](double curv, double berm, double along = 0) {
-        path.push_back({x, z, th, s + along, curv});
-        bermH.push_back(berm);
-    };
+    auto push = [&](double curv, double along = 0) { path.push_back({x, z, th, s + along, curv}); };
     auto straight = [&](double len) {
         const int n = int(std::round(len / ds));
         for (int i = 0; i < n; ++i) {
-            push(0, 0);
+            push(0);
             x += std::cos(th) * ds;
             z += std::sin(th) * ds;
             s += ds;
@@ -82,9 +80,9 @@ Terrain Terrain::makeTestTrack() {
         z += std::sin(th) * (len - n * ds);
         s += len - n * ds;
     };
-    // Arc de rayon r, angle a (rad), sens turn (+1 droite, -1 gauche) ; berm de hauteur H côté
-    // extérieur, qui monte et descend sur les 6 premiers / derniers mètres.
+    // Arc de rayon r, angle a (rad), sens turn (+1 droite, -1 gauche) ; berm de hauteur H côté extérieur.
     auto arc = [&](double r, double a, int turn, double H) {
+        if (H > 0) berms.push_back({s, s + r * a, H, -turn});
         const double len = r * a, cx = x - std::sin(th) * r * turn, cz = z + std::cos(th) * r * turn, th0 = th;
         const int n = int(std::round(len / ds));
         for (int i = 0; i < n; ++i) {
@@ -92,7 +90,7 @@ Terrain Terrain::makeTestTrack() {
             th = th0 + turn * l / r;
             x = cx + std::sin(th) * r * turn;
             z = cz - std::cos(th) * r * turn;
-            push(turn / r, H * smooth(clampd(std::min(l, len - l) / 6.0, 0, 1)), l);
+            push(turn / r, l);
         }
         th = th0 + turn * a;
         x = cx + std::sin(th) * r * turn;
@@ -102,7 +100,7 @@ Terrain Terrain::makeTestTrack() {
     const double q = std::numbers::pi / 2;
     straight(113);            // S1 : départ, double, table          (cap +x)
     const double c1 = s;
-    arc(12, q, +1, 1.4);      // berm serré à droite
+    arc(12, q, +1, 1.8);      // berm serré à droite
     const double s2 = s;
     straight(38);             // S2 : rouleaux                         (cap +z)
     arc(20, q, +1, 0.0);      // grand virage à plat
@@ -111,10 +109,10 @@ Terrain Terrain::makeTestTrack() {
     arc(12, q / 2, +1, 0.0);  // ...droite
     const double s3b = s;
     straight(x - (-15));      // S3b : whoops + petit saut, jusqu'à x = -15
-    arc(10, q, +1, 1.6);      // épingle relevée
+    arc(10, q, +1, 2.0);      // épingle relevée
     const double s4 = s;
     straight(z - 25);         // S4 : petite table, jusqu'à z = 25   (cap -z)
-    arc(25, q, +1, 1.0);      // grande courbe relevée, retour au départ
+    arc(25, q, +1, 1.3);      // grande courbe relevée, retour au départ
     const double L = s;
     (void)c1;
 
@@ -130,14 +128,14 @@ Terrain Terrain::makeTestTrack() {
         if (t >= 80 && t < 92) return 2.0;
         if (t >= 92 && t < 99) return 2.0 * (1 - s01(t, 92, 99));
         // Rouleaux : 3 bosses de 50 cm.
-        for (double c : {s2 + 8, s2 + 17, s2 + 26})
+        for (double c : {s2 + 12, s2 + 21, s2 + 30})
             if (std::abs(t - c) < 2.5) return 0.25 * (1 + std::cos(std::numbers::pi * (t - c) / 2.5));
         // Whoops : 12 bosses de 50 cm espacées de 3,5 m, puis petit saut.
-        if (t >= s3b + 5 && t < s3b + 47) return 0.25 * (1 - std::cos(2 * std::numbers::pi * (t - s3b - 5) / 3.5));
-        if (t >= s3b + 55 && t < s3b + 58.5) { const double u = s01(t, s3b + 55, s3b + 58.5); return 0.9 * u * u; }
-        if (t >= s3b + 58.5 && t < s3b + 60) return 0.9 * (1 - smooth(s01(t, s3b + 58.5, s3b + 60)));
-        if (t >= s3b + 64 && t < s3b + 66) return 1.0 * smooth(s01(t, s3b + 64, s3b + 66));
-        if (t >= s3b + 66 && t < s3b + 72) return 1.0 * (1 - s01(t, s3b + 66, s3b + 72));
+        if (t >= s3b + 3 && t < s3b + 45) return 0.25 * (1 - std::cos(2 * std::numbers::pi * (t - s3b - 3) / 3.5));
+        if (t >= s3b + 50 && t < s3b + 53.5) { const double u = s01(t, s3b + 50, s3b + 53.5); return 0.9 * u * u; }
+        if (t >= s3b + 53.5 && t < s3b + 55) return 0.9 * (1 - smooth(s01(t, s3b + 53.5, s3b + 55)));
+        if (t >= s3b + 58 && t < s3b + 60) return 1.0 * smooth(s01(t, s3b + 58, s3b + 60));
+        if (t >= s3b + 60 && t < s3b + 66) return 1.0 * (1 - s01(t, s3b + 60, s3b + 66));
         // Petite table dans S4.
         if (t >= s4 + 10 && t < s4 + 15) { const double u = s01(t, s4 + 10, s4 + 15); return 1.2 * u * u; }
         if (t >= s4 + 15 && t < s4 + 22) return 1.2;
@@ -158,10 +156,19 @@ Terrain Terrain::makeTestTrack() {
         const size_t i = size_t(u);
         return prof[i] + (prof[i + 1] - prof[i]) * (u - double(i));
     };
+    // Berm : pleine hauteur sur tout le virage, monte sur les 8 m de droite avant et redescend sur les
+    // 8 m après. Le dévers ne disparaît qu'une fois la piste redevenue droite : sinon la moto, encore
+    // penchée, se retrouve sur du plat en fin de virage et l'avant décroche (constaté au banc).
+    constexpr double ramp = 8.0;
     auto berm = [&](double t, int& side) {
-        const size_t i = std::min(size_t(std::max(t, 0.0) / ds), path.size() - 1);
-        side = path[i].curvature > 0 ? -1 : 1; // virage à droite : extérieur à gauche (d < 0)
-        return bermH[i];
+        side = 1;
+        for (const Berm& b : berms)
+            for (double tt : {t, t + L, t - L}) // la dernière courbe déborde sur le début de la boucle
+                if (tt > b.s0 - ramp && tt < b.s1 + ramp) {
+                    side = b.side;
+                    return b.H * smooth(clampd(std::min(tt - (b.s0 - ramp), (b.s1 + ramp) - tt) / ramp, 0, 1));
+                }
+        return 0.0;
     };
 
     // ---- 3. Grille : pour chaque maille, point le plus proche de la ligne médiane (abscisse s,
@@ -198,8 +205,9 @@ Terrain Terrain::makeTestTrack() {
         const double t = sv[k], d = dv[k];
         int side;
         const double bh = berm(t, side), u = d * side; // u > 0 : côté extérieur du virage
-        // Berm : la piste se relève du centre jusqu'au bord extérieur, crête de 1 m, puis retombe.
-        const double bermShape = u <= 0 ? 0 : (u < 5.6 ? smooth(s01(u, 0, 4.6)) : 1 - smooth(s01(u, 5.6, 8.6)));
+        // Berm en cuvette sur toute la largeur : à peine relevé à la corde, de plus en plus vers
+        // l'extérieur (puissance 1,6 de la courbe en S), crête de 1 m au bord, puis retombe dans le pré.
+        const double bermShape = u < 5.6 ? std::pow(smooth(s01(u, -kTrackHalfWidth, 4.6)), 1.6) : 1 - smooth(s01(u, 5.6, 8.6));
         h[k] = float(profile(t) * (1 - smooth(s01(std::abs(d), kTrackHalfWidth, 7.0))) + bh * bermShape);
     }
 
@@ -209,7 +217,7 @@ Terrain Terrain::makeTestTrack() {
         const TrackPoint& p = terrain.path_[std::min(size_t(t / ds), terrain.path_.size() - 1)];
         terrain.spawns_.push_back({name, p.x, p.z, -p.heading});
     };
-    at("Départ", 4);
+    at("Départ", 12);
     at("Double", 22);
     at("Table", 60);
     at("Berm", 100);

@@ -223,3 +223,32 @@ allers-retours du guidon (contre-braquage visible), et à basse vitesse incapabl
 
 **À revérifier :**
 - Virages lents : tourne bien maintenant ? Le contre-braquage est-il acceptable (visible surtout sous 20 km/h) ?
+
+### 2026-11-18 — Virages : stick à fond obligatoire, berms qui tournent peu, chute en sortie de berm
+**Ressenti :**
+- La physique de direction est beaucoup mieux.
+- Dans les virages il faut pousser le stick à fond ; dans les berms ça tourne très peu et on tombe à la fin du berm.
+
+**Diagnostic (banc : berm serré r = 12 m, stick à fond) :**
+- Le pilote limitait l'inclinaison à 34° par rapport à la VERTICALE, même dans un berm : il ne profitait pas du
+  dévers, tournait large, remontait le berm et passait la crête (32 km/h : 7,6 m d'écart, chute).
+- Le berm s'aplatissait sur les 6 derniers mètres du virage, encore au rayon le plus serré : moto penchée à 45° sur
+  du plat -> l'avant décroche (Fy/N = 0,89 = mu). Et la moitié intérieure de la piste était plate : plonger à la
+  corde en gardant l'inclinaison du berm faisait décrocher l'avant.
+- À 40 km/h, avant délesté : le pilote braquait de 25° et la moto partait en guidonnage.
+
+**Modifications :**
+- code : la limite d'inclinaison porte sur l'angle par rapport au SOL (normale sous les roues) : dans un berm
+  penché de β, il penche de 34° + β et tourne bien plus serré.
+- code : angle de guidon plafonné à ce qui sert à la vitesse (1,5 x virage le plus serré tenable + 3°).
+- piste : berms en cuvette sur toute la largeur (peu relevés à la corde, de plus en plus vers l'extérieur),
+  relevés sur 8 m avant et 8 m après le virage ; hauteurs 1,4/1,6/1,0 -> 1,8/2,0/1,3 m. Rouleaux, petit saut
+  et départ décalés pour laisser la place aux raccords.
+
+**Mesures après (stick à fond, lancé à vitesse tenue) :** 25 km/h : 44° d'inclinaison, reste dans le berm ;
+32 km/h : 42°, reste sous la crête ; 40 km/h avec braquage tardif : sort large (physique : il faudrait 46° tôt).
+Sur le plat : inchangé.
+
+**À revérifier :**
+- Berms : ça tourne, ça tient, on ne tombe plus en sortie ?
+- Plat : faut-il encore le stick à fond ? (c'est la limite d'adhérence : 34° ~ 0,67 g sur terre plate)

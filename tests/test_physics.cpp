@@ -208,6 +208,48 @@ TEST_CASE("virage serré en coupant les gaz jusqu'à l'arrêt : la moto ne tombe
     }
 }
 
+TEST_CASE("berm : stick à fond, la moto penche plus que sur le plat, reste dans le virage et ne tombe pas") {
+    const auto& path = track().trackPath();
+    auto locate = [&](Vec3 pos, double& s, double& d) { // abscisse et écart latéral (+ = droite) sur le circuit
+        double best = 1e9;
+        for (size_t i = 0; i < path.size(); i += 2) {
+            const double dd = std::hypot(pos.x - path[i].x, pos.z - path[i].z);
+            if (dd < best) {
+                best = dd;
+                s = path[i].s;
+                d = (pos.x - path[i].x) * -std::sin(path[i].heading) + (pos.z - path[i].z) * std::cos(path[i].heading);
+            }
+        }
+    };
+    for (double v : {7.0, 9.0}) {
+        CAPTURE(v);
+        BikeSim sim;
+        sim.reset(BikeParams{}, track(), track().spawn("Berm"));
+        BikeState& w = const_cast<BikeState&>(sim.state()); // lancée à la vitesse v
+        for (RigidBody3D* b : {&w.chassis, &w.fork, &w.swingarm, &w.rider}) b->vel = w.chassis.dirToWorld(kX) * v;
+        w.front.spin = -v / BikeParams{}.frontWheelRadius;
+        w.rear.spin = -v / BikeParams{}.rearWheelRadius;
+        Inputs in;
+        in.riderLean = 0.3;
+        double s = 0, d = 0, maxD = 0, maxLean = 0;
+        for (int i = 0; i < 8000 && s < 145; ++i) {
+            locate(sim.state().chassis.pos, s, d);
+            in.throttle = clampd(0.3 + 0.3 * (v - sim.state().speed), 0, 1);
+            in.steer = s > 111 && s < 128 ? 1.0 : 0.0; // berm à droite de s = 113 à 132
+            sim.step(in, track(), 0.001);
+            REQUIRE(finite(sim.state()));
+            if (s > 112 && s < 135) {
+                maxD = std::max(maxD, std::abs(d));
+                maxLean = std::max(maxLean, sim.state().leanAngle);
+            }
+        }
+        MESSAGE((v * 3.6) << " km/h : inclinaison max " << maxLean * 57.3 << "°, écart latéral max " << maxD << " m");
+        CHECK(maxLean > BikeParams{}.riderMaxLean + 0.05); // le dévers permet de pencher plus que sur le plat
+        CHECK(maxLean < 1.0);                               // sans tomber
+        CHECK(maxD < 6.0);                                  // sans passer la crête du berm
+    }
+}
+
 TEST_CASE("réglages extrêmes : chaque curseur à ses bornes reste stable") {
     for (const ParamInfo& info : paramTable()) {
         for (double v : {info.min, info.max}) {

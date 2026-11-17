@@ -186,7 +186,7 @@ void Renderer::init(const Terrain& t) {
         decor_.push_back({Cube, m, {214, 180, 90, 255}});
     }
     { // grille de départ : poutre basse en travers de la piste + poteaux
-        const TrackPoint& p = path[20];
+        const TrackPoint& p = path[100]; // 10 m après la sortie de la dernière courbe relevée
         const Vec3 right{-std::sin(p.heading), 0, std::cos(p.heading)};
         for (double side : {-1.0, 1.0}) {
             const Vec3 g = groundAt(p.x + right.x * side * 4.4, p.z + right.z * side * 4.4);
