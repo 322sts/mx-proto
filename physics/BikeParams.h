@@ -16,7 +16,7 @@ struct BikeParams {
     double frontWheelMass = 8.5;      // kg    jante 21" + pneu + disque
     double rearWheelMass = 10.0;      // kg    jante 18" + pneu + disque + couronne
     double frontWheelInertia = 0.45;  // kg.m² inertie de rotation autour de l'axe de roue
-    double rearWheelInertia = 0.65;   // kg.m²
+    double rearWheelInertia = 0.90;   // kg.m² pneu lourd + mousse : plus d'effet gaz / frein AR en l'air
     double frontWheelRadius = 0.355;  // m     rayon extérieur du pneu
     double rearWheelRadius = 0.340;   // m
     double wheelbase = 1.50;          // m     distance horizontale entre axes, détendu

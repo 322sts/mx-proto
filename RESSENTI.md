@@ -116,3 +116,21 @@ La transition est très serrée : c'est physique, un wheelie / stoppie est insta
 
 **À revérifier :**
 - Stoppie et wheelie dosables au ressenti (gâchettes + stick) ? Trop ou pas assez ?
+
+### 2026-11-17 — En l'air : gaz et frein AR pas assez efficaces
+**Ressenti :**
+- Beaucoup mieux (stoppie / wheelie).
+- En l'air : accélérer doit remonter un peu plus la moto, le frein AR doit la rabaisser un peu plus.
+
+**Physique :** en l'air, gaz = la roue AR accélère, la moto tourne en sens inverse (nez qui monte) ; frein AR = la
+roue ralentit, le nez descend. L'effet = inertie de la roue × variation de sa vitesse. Le frein AR est borné
+(au mieux on arrête la roue) : seul levier honnête = l'inertie de la roue AR.
+
+**Modifications :**
+- `rearWheelInertia` 0,65 → 0,90 kg.m² (pneu lourd + mousse, haut de la plage réaliste).
+
+**Mesures (vol libre 0,6 s à 50 km/h) :** gaz à fond +46° → +54° ; frein AR −20° → −26°. Wheelie / stoppie inchangés.
+
+**À revérifier :**
+- Assez marqué ? Note : le vilebrequin est compté comme s'il tournait avec la roue (inertie × rapport²), ce qui
+  donne déjà un effet en l'air plus fort qu'une vraie moto ; à corriger avec la boîte (étape 4), il faudra alors recaler.
