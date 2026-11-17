@@ -1,34 +1,41 @@
 #pragma once
-// Simulation de la moto + pilote dans le plan vertical.
+// Simulation 3D de la moto + pilote.
 //
 // Corps rigides (Euler semi-implicite, pas fixe) :
-//   châssis, fourche (fourreaux + masse de la roue AV), bras oscillant (+ masse de la
+//   châssis, bloc avant (fourreaux + masse de la roue AV), bras oscillant (+ masse de la
 //   roue AR), pilote. La rotation propre de chaque roue est un degré de liberté à part
-//   (roue articulée sur son axe), ce qui fait que gaz/frein en l'air font tourner la moto.
-// Liaisons rigides (solveur d'impulsions en vitesse) : glissière de fourche, pivot du bras,
-// butées de fin de course de sécurité. Tout le reste est fait de forces : ressorts,
-// amortisseurs, pneus, pilote, moteur, freins.
+//   (roue articulée sur son axe) : gaz/frein en l'air font tourner la moto, et son moment
+//   cinétique donne l'effet gyroscopique au porteur.
+// Liaisons rigides (solveur d'impulsions en vitesse) :
+//   - direction + fourche = liaison cylindrique châssis/bloc avant le long de l'axe de direction
+//     (rotation = braquage, translation = enfoncement : exact pour des tubes parallèles à l'axe) ;
+//   - pivot du bras = charnière ;
+//   - butées de fin de course et de braquage.
+// Tout le reste est fait de forces : ressorts, amortisseurs, pneus, pilote, moteur, chaîne, freins.
 #include "BikeParams.h"
 #include "Terrain.h"
 
 namespace mx {
 
 struct WheelState {
-    Vec2 center;             // m
+    Vec3 center;             // m
     double radius = 0;       // m
-    double angle = 0;        // rad    rotation absolue (pour le dessin)
-    double spin = 0;         // rad/s  vitesse angulaire absolue (sens trigo : rouler en avant < 0)
+    double angle = 0;        // rad    rotation par rapport au porteur (pour le dessin)
+    double spin = 0;         // rad/s  vitesse angulaire absolue autour de l'axe de roue (+z porteur ; rouler en avant < 0)
     bool contact = false;
-    Vec2 contactPoint, normal;
+    Vec3 contactPoint, normal;
     double deflection = 0;   // m      écrasement du pneu
     double normalForce = 0;  // N
-    double longForce = 0;    // N      positif = pousse la moto vers l'avant
+    double longForce = 0;    // N      positif = pousse vers l'avant de la roue
+    double latForce = 0;     // N      positif = pousse vers la droite de la roue
     double slipRatio = 0;    // -      positif = patine (motricité), négatif = freine/bloque
+    double slipAngle = 0;    // rad    dérive (positif = la roue glisse vers la gauche)
+    double camber = 0;       // rad    inclinaison de la roue par rapport au sol (positif = vers la droite)
 };
 
 struct BikeState {
     double time = 0;                      // s
-    RigidBody2D chassis, fork, swingarm, rider;
+    RigidBody3D chassis, fork, swingarm, rider;
     WheelState front, rear;
     double forkTravel = 0, forkSpeed = 0; // m, m/s le long de la fourche (positif = compression)
     double rearTravel = 0, rearSpeed = 0; // m, m/s à la roue AR
@@ -36,24 +43,29 @@ struct BikeState {
     double engineSpeed = 0;               // rad/s  vilebrequin
     double chainTension = 0;              // N      brin supérieur
     double speed = 0;                     // m/s    vitesse du châssis
-    double riderLean = 0;                 // m      déplacement actuel du corps du pilote
+    double riderLean = 0;                 // m      déplacement avant/arrière actuel du corps du pilote
+    double steerAngle = 0;                // rad    braquage (positif = à gauche)
+    double leanAngle = 0;                 // rad    inclinaison de la moto (positif = à droite)
+    double steerTorque = 0;               // N.m    couple du pilote dans le guidon
+    double feetDown = 0;                  // 0..1   pieds posés (basse vitesse)
     Inputs inputs;                        // commandes du dernier pas
 };
 
 // Points de conception, chacun dans le repère local du corps concerné (origine = son CdG).
+// Plan de symétrie z = 0 ; les points pairs (repose-pieds, guidon) sont décalés de ±largeur en z.
 struct BikeLayout {
     // Châssis
-    Vec2 rearAxle, pivot, frontAxle, steeringHead, pegs, bars, shockTop, forkAxis;
-    Vec2 skidPlate, rearFender, seat, countershaft;
-    // Fourche et bras
-    Vec2 forkAxle, swingPivot, swingAxle;
+    Vec3 rearAxle, pivot, frontAxle, steerAxisPoint, steeringHead, pegs, bars, shockTop, forkAxis;
+    Vec3 skidPlate, rearFender, seat, countershaft, foot;
+    // Bloc avant et bras
+    Vec3 forkAxle, forkAxisPoint, swingPivot, swingAxle;
     // Pilote
-    Vec2 riderFeet, riderHands, riderHip, riderShoulder, riderHead;
+    Vec3 riderFeet, riderHands, riderHip, riderShoulder, riderHead;
 };
 
 class BikeSim {
 public:
-    // Construit la moto à l'abscisse x de la piste et la laisse se poser (freins serrés).
+    // Construit la moto à l'abscisse x de la piste (z = 0, cap +x) et la laisse se poser (freins serrés).
     void reset(const BikeParams& params, const Terrain& terrain, double x);
     void step(const Inputs& inputs, const Terrain& terrain, double dt);
 
@@ -62,8 +74,11 @@ public:
     const BikeLayout& layout() const { return L_; }
 
 private:
-    void tire(WheelState& w, RigidBody2D& carrier, Vec2 axle, double stiffness, double inertia,
-              const Terrain& terrain, double dt, double& wheelTorque);
+    void tire(WheelState& w, RigidBody3D& carrier, Vec3 axle, Vec3 axis, double stiffness, double spinInertia,
+              const Terrain& terrain, double dt, double& spinTorque);
+    void bodyContact(RigidBody3D& b, Vec3 local, const Terrain& terrain, double stiffness, double damping, double dt);
+    double steerAngle() const;  // rad, rotation du bloc avant autour de l'axe de direction (+ = gauche)
+    double swingAngle() const;  // rad, rotation du bras autour de son pivot (+ = détente au-delà du dessin)
     void solveJoints(double dt);
 
     BikeParams p_;

@@ -1,6 +1,6 @@
 # Pure C++ physics library: no dependency allowed here (future Unreal Engine 5 port).
 add_library(mx_physics STATIC
-  Math2D.h
+  Math3D.h
   BikeParams.h BikeParams.cpp
   Terrain.h Terrain.cpp
   BikeSim.h BikeSim.cpp)

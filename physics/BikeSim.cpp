@@ -1,5 +1,7 @@
 #include "BikeSim.h"
 #include <algorithm>
+#include <array>
+#include <limits>
 #include <numbers>
 
 namespace mx {
@@ -13,6 +15,9 @@ constexpr double kHardStopMargin = 0.03; // m au-delà du débattement : arrêt 
 constexpr double kBodyContactStiffness = 80000.0; // N/m   châssis/pilote qui touche le sol (chute)
 constexpr double kBodyContactDamping = 3000.0;    // N.s/m
 constexpr double kBodyContactMu = 0.6;
+constexpr double kFootStiffness = 30000.0;        // N/m   pied posé au sol (jambe tendue)
+constexpr double kFootDamping = 1500.0;           // N.s/m
+constexpr double kFootOut = 0.40;                 // m     écart latéral du pied posé
 
 double sq(double v) { return v * v; }
 
@@ -27,22 +32,28 @@ double torqueFraction(double omega) {
     return frac[6];
 }
 
-// Adhérence longitudinale sur terre selon |taux de glissement| :
+// Adhérence sur terre selon le glissement combiné normalisé s (1 = au pic) :
 // montée parabolique jusqu'au pic (pente nulle au pic), puis décroissance exponentielle
-// douce vers l'adhérence de glisse -> pas de décrochage brutal.
-double gripCurve(double k, const BikeParams& p) {
-    if (k < p.tirePeakSlip) {
-        const double r = k / p.tirePeakSlip;
-        return p.tirePeakMu * (2 * r - r * r);
-    }
-    return p.tireSlideMu + (p.tirePeakMu - p.tireSlideMu) * std::exp(-(k - p.tirePeakSlip) / p.tireSlipFalloff);
+// douce vers l'adhérence de glisse -> pas de décrochage brutal. En ligne droite (dérive nulle)
+// s = taux de glissement / glissement au pic : même courbe qu'en 2D.
+double gripCurve(double s, const BikeParams& p) {
+    if (s < 1) return p.tirePeakMu * (2 * s - s * s);
+    return p.tireSlideMu + (p.tirePeakMu - p.tireSlideMu) * std::exp(-(s - 1) * p.tirePeakSlip / p.tireSlipFalloff);
 }
 
 // Ressort-amortisseur de longueur à vide nulle entre le point pa de a et le point pb de b.
-void spring(RigidBody2D& a, Vec2 pa, RigidBody2D& b, Vec2 pb, double k, double c) {
-    const Vec2 f = (pa - pb) * k - (b.velocityAt(pb) - a.velocityAt(pa)) * c; // force sur b
+void spring(RigidBody3D& a, Vec3 pa, RigidBody3D& b, Vec3 pb, double k, double c) {
+    const Vec3 f = (pa - pb) * k - (b.velocityAt(pb) - a.velocityAt(pa)) * c; // force sur b
     b.applyForce(f, pb);
     a.applyForce(-f, pa);
+}
+
+// Inertie (diagonale, axes x/y/z) d'une masse ponctuelle décalée de d du centre de masse.
+Vec3 pointInertia(double m, Vec3 d) { return {m * (sq(d.y) + sq(d.z)), m * (sq(d.x) + sq(d.z)), m * (sq(d.x) + sq(d.y))}; }
+// Barre fine de longueur len selon la direction unitaire u, autour de son milieu.
+Vec3 rodInertia(double m, double len, Vec3 u) {
+    const double k = m * len * len / 12;
+    return {k * (1 - sq(u.x)), k * (1 - sq(u.y)), k * (1 - sq(u.z))};
 }
 } // namespace
 
@@ -51,61 +62,71 @@ void BikeSim::reset(const BikeParams& p, const Terrain& terrain, double x) {
     s_ = BikeState{};
     const double Rf = p.frontWheelRadius, Rr = p.rearWheelRadius;
 
-    // Points de conception : moto détendue, horizontale, origine à l'axe de roue AR.
-    const Vec2 rearAxle{0, 0};
-    const Vec2 pivot = Vec2{std::cos(p.swingarmAngle), std::sin(p.swingarmAngle)} * p.swingarmLength;
-    const Vec2 frontAxle{p.wheelbase, Rf - Rr};
-    const Vec2 axis{-std::sin(p.rakeAngle), std::cos(p.rakeAngle)}; // de l'axe de roue vers la tête de fourche
-    const Vec2 com{p.chassisComX, p.chassisComY};
-    const Vec2 riderCom{p.riderComX, p.riderComY};
-    const Vec2 pegs{p.pegX, p.pegY}, bars{p.barX, p.barY};
+    // Points de conception : moto détendue, droite, horizontale, origine à l'axe de roue AR.
+    const Vec3 rearAxle{0, 0, 0};
+    const Vec3 pivot = Vec3{std::cos(p.swingarmAngle), std::sin(p.swingarmAngle), 0} * p.swingarmLength;
+    const Vec3 frontAxle{p.wheelbase, Rf - Rr, 0};
+    const Vec3 axis{-std::sin(p.rakeAngle), std::cos(p.rakeAngle), 0};   // de l'axe de roue vers la tête de fourche
+    const Vec3 axisFwd{std::cos(p.rakeAngle), std::sin(p.rakeAngle), 0}; // perpendiculaire, vers l'avant
+    const Vec3 axisPoint = frontAxle - axisFwd * p.forkOffset;           // axe de direction (derrière l'axe de roue)
+    const Vec3 com{p.chassisComX, p.chassisComY, 0};
+    const Vec3 riderCom{p.riderComX, p.riderComY, 0};
+    const Vec3 pegs{p.pegX, p.pegY, 0}, bars{p.barX, p.barY, 0};
 
-    // Fourche = fourreaux (CdG ~25 cm au-dessus de l'axe, ~50 cm de long) + roue AV.
+    // Bloc avant = fourreaux (CdG ~25 cm au-dessus de l'axe, ~50 cm de long) + roue AV.
+    // La rotation propre de la roue est à part ; ici seulement son inertie transversale (I/2, disque).
     const double mF = p.forkLowerMass + p.frontWheelMass;
-    const Vec2 lowersCom = frontAxle + axis * 0.25;
-    const Vec2 forkCom = (lowersCom * p.forkLowerMass + frontAxle * p.frontWheelMass) / mF;
-    const double IF = p.forkLowerMass * (0.25 / 12 + sq(length(lowersCom - forkCom))) +
-                      p.frontWheelMass * sq(length(frontAxle - forkCom));
-    // Bras = barre uniforme + roue AR à son extrémité (inertie de rotation propre de la roue à part).
+    const Vec3 lowersCom = frontAxle + axis * 0.25;
+    const Vec3 forkCom = (lowersCom * p.forkLowerMass + frontAxle * p.frontWheelMass) / mF;
+    Vec3 IF = rodInertia(p.forkLowerMass, 0.5, axis) + pointInertia(p.forkLowerMass, lowersCom - forkCom) +
+              pointInertia(p.frontWheelMass, frontAxle - forkCom) + Vec3{p.frontWheelInertia / 2, p.frontWheelInertia / 2, 0};
+    // Guidon + tés : leur masse est comptée dans le châssis (suspendue), seule leur inertie autour
+    // de l'axe de direction tourne avec le bloc avant.
+    IF += Vec3{sq(axis.x), sq(axis.y), 0} * p.barsInertia;
+    // Bras = barre + roue AR à son extrémité.
     const double mS = p.swingarmMass + p.rearWheelMass;
-    const Vec2 mid = (pivot + rearAxle) * 0.5;
-    const Vec2 swingCom = (mid * p.swingarmMass + rearAxle * p.rearWheelMass) / mS;
-    const double IS = p.swingarmMass * (sq(p.swingarmLength) / 12 + sq(length(mid - swingCom))) +
-                      p.rearWheelMass * sq(length(rearAxle - swingCom));
+    const Vec3 mid = (pivot + rearAxle) * 0.5;
+    const Vec3 swingCom = (mid * p.swingarmMass + rearAxle * p.rearWheelMass) / mS;
+    const Vec3 IS = rodInertia(p.swingarmMass, p.swingarmLength, normalize(pivot - rearAxle)) +
+                    pointInertia(p.swingarmMass, mid - swingCom) + pointInertia(p.rearWheelMass, rearAxle - swingCom) +
+                    Vec3{p.rearWheelInertia / 2, p.rearWheelInertia / 2, 0};
 
     L_.rearAxle = rearAxle - com;
     L_.pivot = pivot - com;
     L_.frontAxle = frontAxle - com;
-    L_.steeringHead = frontAxle + axis * p.forkLength - com;
+    L_.steerAxisPoint = axisPoint - com;
+    L_.steeringHead = axisPoint + axis * p.forkLength - com;
     L_.pegs = pegs - com;
     L_.bars = bars - com;
     L_.forkAxis = axis;
-    L_.shockTop = pivot + Vec2{0.05, 0.30} - com;          // dessin seulement
-    L_.skidPlate = Vec2{pivot.x + 0.20, -0.05} - com;      // sabot moteur
-    L_.rearFender = Vec2{-0.35, 0.62} - com;               // bout de garde-boue AR
-    L_.seat = Vec2{0.40, 0.62} - com;
-    L_.countershaft = Vec2{p.countershaftX, p.countershaftY} - com;
+    L_.shockTop = pivot + Vec3{0.05, 0.30, 0} - com;          // dessin seulement
+    L_.skidPlate = Vec3{pivot.x + 0.20, -0.05, 0} - com;      // sabot moteur
+    L_.rearFender = Vec3{-0.35, 0.62, 0} - com;               // bout de garde-boue AR
+    L_.seat = Vec3{0.40, 0.62, 0} - com;
+    L_.countershaft = Vec3{p.countershaftX, p.countershaftY, 0} - com;
+    L_.foot = Vec3{p.pegX, -Rr + 0.08, 0} - com;              // semelle du pied posé, ~2 cm du sol au sag
     L_.forkAxle = frontAxle - forkCom;
+    L_.forkAxisPoint = axisPoint - forkCom;
     L_.swingPivot = pivot - swingCom;
     L_.swingAxle = rearAxle - swingCom;
     L_.riderFeet = pegs - riderCom;
     L_.riderHands = bars - riderCom;
-    L_.riderHip = {-0.10, -0.08};
-    L_.riderShoulder = {0.12, 0.40};
-    L_.riderHead = {0.18, 0.58};
+    L_.riderHip = {-0.10, -0.08, 0};
+    L_.riderShoulder = {0.12, 0.40, 0};
+    L_.riderHead = {0.18, 0.58, 0};
 
-    // Placement : axe AR 1 cm au-dessus du sol, moto horizontale, tout à l'arrêt.
-    const Vec2 origin{x, terrain.height(x) + Rr + 0.01};
-    auto place = [&](RigidBody2D& b, Vec2 designCom, double m, double I) {
-        b = RigidBody2D{};
+    // Placement : axe AR 1 cm au-dessus du sol, moto droite cap +x, tout à l'arrêt.
+    const Vec3 origin{x, terrain.height(x, 0) + Rr + 0.01, 0};
+    auto place = [&](RigidBody3D& b, Vec3 designCom, double m, Vec3 I) {
+        b = RigidBody3D{};
         b.pos = origin + designCom;
         b.mass = m;
         b.inertia = I;
     };
-    place(s_.chassis, com, p.chassisMass, p.chassisInertia);
+    place(s_.chassis, com, p.chassisMass, {p.chassisRollInertia, p.chassisYawInertia, p.chassisInertia});
     place(s_.fork, forkCom, mF, IF);
     place(s_.swingarm, swingCom, mS, IS);
-    place(s_.rider, riderCom, p.riderMass, p.riderInertia);
+    place(s_.rider, riderCom, p.riderMass, {p.riderRollInertia, p.riderYawInertia, p.riderInertia});
     s_.front.radius = Rf;
     s_.rear.radius = Rr;
 
@@ -116,32 +137,48 @@ void BikeSim::reset(const BikeParams& p, const Terrain& terrain, double x) {
     s_.time = 0;
 }
 
-void BikeSim::tire(WheelState& w, RigidBody2D& carrier, Vec2 axle, double stiffness, double inertia,
-                   const Terrain& terrain, double dt, double& wheelTorque) {
+double BikeSim::steerAngle() const {
+    // Avant du bloc avant vu dans le repère châssis, projeté sur le plan perpendiculaire à l'axe.
+    const Vec3 u = L_.forkAxis;
+    const Vec3 ref1 = normalize(kX - u * dot(kX, u)), ref2 = cross(u, ref1); // ref2 = vers la gauche
+    const Vec3 xF = rotateInv(s_.chassis.q, s_.fork.dirToWorld(kX));
+    return std::atan2(dot(xF, ref2), dot(xF, ref1));
+}
+
+double BikeSim::swingAngle() const {
+    const Vec3 xS = rotateInv(s_.chassis.q, s_.swingarm.dirToWorld(kX));
+    return std::atan2(xS.y, xS.x);
+}
+
+void BikeSim::tire(WheelState& w, RigidBody3D& carrier, Vec3 axle, Vec3 a, double stiffness, double spinInertia,
+                   const Terrain& terrain, double dt, double& spinTorque) {
     w.center = axle;
     w.contact = false;
-    w.deflection = w.normalForce = w.longForce = w.slipRatio = 0;
-    const double r = w.radius;
+    w.deflection = w.normalForce = w.longForce = w.latForce = w.slipRatio = w.slipAngle = w.camber = 0;
+    const double R = w.radius, rc = std::min(p_.tireCrownRadius, 0.5 * R);
 
-    // Géométrie du contact : point du sol le plus proche du centre de roue (marche aussi
-    // sur les lèvres et dans les creux). Si le centre est passé sous le sol (chute), on
-    // repousse selon la normale locale.
-    Vec2 n;
-    double defl;
-    const double ground = terrain.height(axle.x);
-    if (axle.y <= ground) {
-        n = terrain.normal(axle.x);
-        defl = r + (ground - axle.y) * n.y;
-    } else {
-        const Vec2 q = terrain.closestPoint(axle, r + 0.05);
-        const Vec2 d = axle - q;
-        const double dist = length(d);
-        if (dist >= r) return;
-        n = dist > 1e-9 ? d / dist : terrain.normal(axle.x);
-        defl = r - dist;
+    // Géométrie : pneu = tore (rayon de profil rc). Le point de la "ligne médiane" du profil le
+    // plus bas vers le sol est dans le plan de roue, du côté opposé à la normale du sol ; en
+    // angle, le contact se décale donc sur le flanc. On réévalue le sol sous le contact estimé
+    // (3 passes) pour suivre les lèvres et les creux.
+    Vec3 n = terrain.normal(axle.x, axle.z), core, ground;
+    for (int it = 0; it < 3; ++it) {
+        Vec3 d = n - a * dot(n, a);
+        const double dl = length(d);
+        if (dl < 1e-6) return; // roue couchée à plat : pas de contact pneu (la chute est gérée par les points du châssis)
+        d = d / -dl;
+        core = axle + d * (R - rc);
+        const Vec3 cp = core - n * rc;
+        double hx, hz;
+        ground = {cp.x, terrain.sample(cp.x, cp.z, hx, hz), cp.z};
+        n = normalize(Vec3{-hx, 1, -hz});
     }
-    const Vec2 lever = n * -(std::max(r - defl, 0.0)); // centre -> point de contact
-    const Vec2 vAxle = carrier.velocityAt(axle);
+    const double coreHeight = dot(core - ground, n);
+    const double defl = rc - coreHeight;
+    if (defl <= 0) return;
+    const Vec3 P = core - n * coreHeight; // point de contact, sur le sol
+    const Vec3 lever = P - axle;
+    const Vec3 vAxle = carrier.velocityAt(axle);
 
     // Force normale : ressort radial du pneu + amortissement, + la jante si le pneu est
     // écrasé jusqu'au bout. Bornée à >= 0 : le sol pousse, il ne colle pas.
@@ -149,30 +186,74 @@ void BikeSim::tire(WheelState& w, RigidBody2D& carrier, Vec2 axle, double stiffn
     if (defl > p_.tireRimDeflection) N += p_.tireRimStiffness * (defl - p_.tireRimDeflection);
     N = std::max(N, 0.0);
 
-    // Force longitudinale : glissement = vitesse de la bande de roulement au contact
-    // rapportée à la vitesse sol. Fx = mu(glissement) * N.
-    const Vec2 t{n.y, -n.x}; // tangente au sol, vers l'avant
-    const double vPatch = dot(vAxle + w.spin * perp(lever), t);
-    const double vGround = dot(vAxle, t);
-    const double slip = -vPatch / std::max(std::abs(vGround), p_.tireLowSpeed);
-    double Fx = (slip >= 0 ? 1.0 : -1.0) * gripCurve(std::abs(slip), p_) * N;
-    // Limite "adhérence statique" : jamais plus que la force qui annule vPatch en un pas
-    // (sinon le glissement s'inverse à chaque pas -> vibration). Rend la moto stable à l'arrêt.
-    const double invMass = dot(lever, lever) / inertia + 1.0 / carrier.mass;
-    const double fStop = std::abs(vPatch) / (dt * invMass);
-    Fx = clampd(Fx, -fStop, fStop);
+    // Glissements. Vitesse de la bande de roulement au contact = vitesse de l'axe + rotation de
+    // la roue (celle du porteur hors axe + la rotation propre autour de l'axe).
+    const Vec3 wWheel = carrier.angVel - a * dot(carrier.angVel, a) + a * w.spin;
+    const Vec3 vPatch = vAxle + cross(wWheel, lever);
+    const Vec3 tx = normalize(cross(n, a)); // vers l'avant de la roue, dans le plan du sol
+    const Vec3 ty = cross(tx, n);           // vers la droite de la roue
+    const double vGx = dot(vAxle, tx), vPx = dot(vPatch, tx), vPy = dot(vPatch, ty);
+    const double denom = std::max(std::abs(vGx), p_.tireLowSpeed);
+    const double kappa = -vPx / denom;  // taux de glissement longitudinal
+    const double tanAlpha = -vPy / denom; // dérive : > 0 quand la bande glisse vers la gauche
+    const double gamma = std::asin(clampd(-dot(a, n), -1, 1)); // carrossage, > 0 = roue penchée à droite
 
-    const Vec2 f = n * N + t * Fx;
-    carrier.applyForce(f, axle);    // roue articulée sur l'axe : la force passe au porteur
-    wheelTorque += cross(lever, f); // et le couple au contact fait tourner la roue
+    // Glissement combiné (ellipse d'adhérence) : chaque direction normalisée par son glissement
+    // au pic, adhérence mu(s) partagée entre les deux. Le carrossage s'ajoute à la dérive comme une
+    // dérive équivalente : pente initiale d'adhérence 2*mu_pic/dérive_pic, d'où la conversion.
+    const double sx = kappa / p_.tirePeakSlip;
+    const double sy = tanAlpha / p_.tirePeakSlipAngle + p_.tireCamberThrust * gamma / (2 * p_.tirePeakMu);
+    const double s = std::hypot(sx, sy);
+    double Fx = 0, Fy = 0;
+    if (s > 1e-9) {
+        const double F = gripCurve(s, p_) * N;
+        Fx = F * sx / s;
+        Fy = F * sy / s;
+    }
+    // Limite "adhérence statique" : jamais plus que la force qui annule le glissement en un pas
+    // (sinon il s'inverse à chaque pas -> vibration). Rend la moto stable à l'arrêt.
+    const double armX = dot(cross(lever, tx), a);
+    const double invMx = armX * armX / spinInertia + 1.0 / carrier.mass;
+    Fx = clampd(Fx, -std::abs(vPx) / (dt * invMx), std::abs(vPx) / (dt * invMx));
+    const Vec3 cy = cross(P - carrier.pos, ty);
+    const double invMy = 1.0 / carrier.mass + dot(cy, carrier.invInertiaMul(cy));
+    Fy = clampd(Fy, -std::abs(vPy) / (dt * invMy), std::abs(vPy) / (dt * invMy));
+
+    // Roue articulée sur l'axe : la force passe au porteur ; du couple au contact, la composante
+    // selon l'axe fait tourner la roue, le reste (roulis/lacet du contact décalé) va au porteur.
+    const Vec3 f = n * N + tx * Fx + ty * Fy;
+    carrier.applyForce(f, axle);
+    const Vec3 tq = cross(lever, f);
+    const double ta = dot(tq, a);
+    spinTorque += ta;
+    carrier.torque += tq - a * ta;
 
     w.contact = N > 0;
-    w.contactPoint = axle + lever;
+    w.contactPoint = P;
     w.normal = n;
     w.deflection = defl;
     w.normalForce = N;
     w.longForce = Fx;
-    w.slipRatio = slip;
+    w.latForce = Fy;
+    w.slipRatio = kappa;
+    w.slipAngle = std::atan(tanAlpha);
+    w.camber = gamma;
+}
+
+// Point d'un corps qui touche le sol (chute, pied posé) : ressort-amortisseur selon la normale,
+// frottement de Coulomb borné (pas plus que ce qui arrête le glissement en deux pas).
+void BikeSim::bodyContact(RigidBody3D& b, Vec3 local, const Terrain& terrain, double stiffness, double damping, double dt) {
+    const Vec3 pt = b.toWorld(local);
+    double hx, hz;
+    const double pen = terrain.sample(pt.x, pt.z, hx, hz) - pt.y;
+    if (pen <= 0 || stiffness <= 0) return;
+    const Vec3 n = normalize(Vec3{-hx, 1, -hz});
+    const Vec3 v = b.velocityAt(pt);
+    const double N = std::max(0.0, stiffness * pen * n.y - damping * dot(v, n));
+    const Vec3 vt = v - n * dot(v, n);
+    const double vtl = length(vt);
+    const Vec3 Ft = vtl > 1e-9 ? vt * (-std::min(kBodyContactMu * N, vtl * b.mass / dt * 0.5) / vtl) : Vec3{};
+    b.applyForce(n * N + Ft, pt);
 }
 
 void BikeSim::step(const Inputs& raw, const Terrain& terrain, double dt) {
@@ -182,28 +263,36 @@ void BikeSim::step(const Inputs& raw, const Terrain& terrain, double dt) {
     in.frontBrake = clampd(raw.frontBrake, 0, 1);
     in.rearBrake = clampd(raw.rearBrake, 0, 1);
     in.riderLean = clampd(raw.riderLean, -1, 1);
+    in.steer = clampd(raw.steer, -1, 1);
     s_.inputs = in;
 
-    RigidBody2D& C = s_.chassis;
-    RigidBody2D& F = s_.fork;
-    RigidBody2D& S = s_.swingarm;
-    RigidBody2D& R = s_.rider;
+    RigidBody3D& C = s_.chassis;
+    RigidBody3D& F = s_.fork;
+    RigidBody3D& S = s_.swingarm;
+    RigidBody3D& R = s_.rider;
     // Masses modifiables en roulant (corps dont l'origine reste le CdG).
     C.mass = p.chassisMass;
-    C.inertia = p.chassisInertia;
+    C.inertia = {p.chassisRollInertia, p.chassisYawInertia, p.chassisInertia};
     R.mass = p.riderMass;
-    R.inertia = p.riderInertia;
+    R.inertia = {p.riderRollInertia, p.riderYawInertia, p.riderInertia};
     const double Iwf = p.frontWheelInertia;
     // Rapport unique sans embrayage : le vilebrequin tourne avec la roue AR, son inertie
     // y est ressentie multipliée par le carré du rapport.
     const double Iwr = p.rearWheelInertia + p.engineInertia * p.gearRatio * p.gearRatio;
 
-    RigidBody2D* bodies[] = {&C, &F, &S, &R};
-    for (RigidBody2D* b : bodies) {
-        b->force = {0, -kGravity * b->mass};
-        b->torque = 0;
+    RigidBody3D* bodies[] = {&C, &F, &S, &R};
+    for (RigidBody3D* b : bodies) {
+        b->force = {0, -kGravity * b->mass, 0};
+        b->torque = {};
     }
     double tqF = 0, tqR = 0; // couples sur la rotation propre des roues
+    const Vec3 aF = F.dirToWorld(kZ), aR = S.dirToWorld(kZ); // axes de roue (vers la droite)
+
+    // Effet gyroscopique : le moment cinétique propre de la roue H = I*spin*axe tourne avec son
+    // porteur ; le porteur doit fournir dH/dt = ω x H, il subit donc -ω x H. (Vilebrequin : son
+    // moment cinétique réel est ~20 fois plus petit que celui de la roue AR, négligé.)
+    F.torque -= cross(F.angVel, aF * (p.frontWheelInertia * s_.front.spin));
+    S.torque -= cross(S.angVel, aR * (p.rearWheelInertia * s_.rear.spin));
 
     // Traînée aérodynamique (moto + pilote) appliquée au châssis : F = -1/2 rho CxS |v| v.
     C.force -= C.vel * (0.5 * kAirDensity * p.dragArea * length(C.vel));
@@ -212,18 +301,31 @@ void BikeSim::step(const Inputs& raw, const Terrain& terrain, double dt) {
     // La cible se déplace à vitesse limitée (un corps humain ne se téléporte pas).
     const double target = in.riderLean * p.riderLeanRange;
     s_.riderLean += clampd(target - s_.riderLean, -p.riderLeanSpeed * dt, p.riderLeanSpeed * dt);
-    // Pieds et mains sont rappelés vers les repose-pieds / le guidon décalés de "shift" :
-    // le corps se déplace de shift. Les efforts étant appliqués à ces points décalés, la moto
-    // ressent le poids déplacé (couple en plus = shift x poids) : cabrage/plongée, transfert de charge.
-    const Vec2 shift{s_.riderLean, 0};
-    spring(C, C.toWorld(L_.pegs + shift), R, R.toWorld(L_.riderFeet), p.riderLegStiffness, p.riderLegDamping);
-    spring(C, C.toWorld(L_.bars + shift), R, R.toWorld(L_.riderHands), p.riderArmStiffness, p.riderArmDamping);
+    // Pieds et mains (gauche et droite) rappelés vers les repose-pieds / le guidon décalés de
+    // "shift" : le corps se déplace de shift. Les efforts étant appliqués à ces points décalés, la
+    // moto ressent le poids déplacé (couple en plus = shift x poids) : cabrage/plongée, transfert de charge.
+    const Vec3 shift{s_.riderLean, 0, 0};
+    for (double side : {-1.0, 1.0}) {
+        const Vec3 peg{0, 0, side * p.pegWidth}, bar{0, 0, side * p.barWidth};
+        spring(C, C.toWorld(L_.pegs + peg + shift), R, R.toWorld(L_.riderFeet + peg), p.riderLegStiffness / 2, p.riderLegDamping / 2);
+        spring(C, C.toWorld(L_.bars + bar + shift), R, R.toWorld(L_.riderHands + bar), p.riderArmStiffness / 2, p.riderArmDamping / 2);
+    }
+    // Gainage : roulis et lacet du pilote rappelés vers ceux de la moto (genoux serrés). Le
+    // tangage reste libre (jambes/bras ci-dessus), comme en 2D.
+    {
+        const Vec3 rel = rotationVector(conj(C.q) * R.q);       // rotation pilote / moto, repère moto
+        const Vec3 wrel = rotateInv(C.q, R.angVel - C.angVel);
+        const Vec3 tq = C.dirToWorld({-(p.riderGripStiffness * rel.x + p.riderGripDamping * wrel.x),
+                                      -(p.riderGripStiffness * rel.y + p.riderGripDamping * wrel.y), 0});
+        R.torque += tq;
+        C.torque -= tq;
+    }
 
     // --- Fourche --- (s = enfoncement le long de l'axe de direction)
+    const Vec3 u = C.dirToWorld(L_.forkAxis);
     {
-        const Vec2 u = rotate(L_.forkAxis, C.angle);
-        const Vec2 axle = F.toWorld(L_.forkAxle);
-        const double s = dot(axle - C.toWorld(L_.frontAxle), u);
+        const Vec3 axle = F.toWorld(L_.forkAxle);
+        const double s = dot(F.toWorld(L_.forkAxisPoint) - C.toWorld(L_.steerAxisPoint), u);
         const double sd = dot(F.velocityAt(axle) - C.velocityAt(axle), u);
         // Ressort préchargé + amortisseur (coefficients séparés compression / détente).
         double f = p.forkSpringRate * (s + p.forkPreload) + (sd > 0 ? p.forkCompDamping : p.forkRebDamping) * sd;
@@ -236,10 +338,34 @@ void BikeSim::step(const Inputs& raw, const Terrain& terrain, double dt) {
         s_.forkSpeed = sd;
     }
 
-    // --- Amortisseur arrière via biellette progressive ---
+    // --- Direction ---
     {
-        const double phi = -(S.angle - C.angle); // rotation de compression du bras (0 = détendu)
-        const double xw = p.swingarmLength * phi, vw = -p.swingarmLength * (S.angVel - C.angVel);
+        const double delta = steerAngle(), deltaDot = dot(F.angVel - C.angVel, u);
+        // Inclinaison de la moto (roulis par rapport à la verticale, + = à droite) et sa vitesse.
+        const Vec3 fwd = C.dirToWorld(kX), up = C.dirToWorld(kY);
+        const Vec3 rightH = normalize(cross(fwd, kY));
+        const double lean = std::atan2(dot(up, rightH), dot(up, kY));
+        const double leanRate = dot(C.angVel, normalize(Vec3{fwd.x, 0, fwd.z}));
+        // Pilote, en deux étages comme un humain : l'écart d'inclinaison donne une vitesse de bascule
+        // voulue (plafonnée), puis il pousse sur le guidon pour suivre cette vitesse. Pour pencher à
+        // droite il pousse le guidon vers la gauche (couple > 0) : la roue part à gauche, le contact
+        // file sous la moto, elle tombe à droite = contre-braquage, non programmé.
+        const double want = in.steer * p.riderMaxLean;
+        const double rate = clampd(p.riderLeanResponse * (want - lean), -p.riderMaxRollRate, p.riderMaxRollRate);
+        const double tauRider = clampd(p.riderSteerGain * (rate - leanRate), -p.riderMaxSteerTorque, p.riderMaxSteerTorque);
+        const double tau = tauRider - p.steerDamping * deltaDot;
+        F.torque += u * tau;
+        C.torque -= u * tau;
+        s_.steerAngle = delta;
+        s_.leanAngle = lean;
+        s_.steerTorque = tauRider;
+    }
+
+    // --- Amortisseur arrière via biellette progressive ---
+    const Vec3 zC = C.dirToWorld(kZ);
+    {
+        const double phi = -swingAngle(); // rotation de compression du bras (0 = détendu)
+        const double xw = p.swingarmLength * phi, vw = -p.swingarmLength * dot(S.angVel - C.angVel, zC);
         // Rapport de levier LR = d(course roue)/d(course amortisseur), qui baisse avec
         // l'enfoncement : l'amortisseur travaille de plus en plus -> suspension progressive.
         const double b = (p.linkRatioEnd - p.linkRatioStart) / p.rearTravel;
@@ -255,21 +381,21 @@ void BikeSim::step(const Inputs& raw, const Terrain& terrain, double dt) {
         const double pen = xw - (p.rearTravel - p.rearBottomZone);
         if (pen > 0) fWheel += p.rearBottomStiffness * pen * pen; // butée progressive
         const double tau = fWheel * p.swingarmLength; // couple qui détend le bras
-        S.torque += tau;
-        C.torque -= tau;
+        S.torque += zC * tau;
+        C.torque -= zC * tau;
         s_.rearTravel = xw;
         s_.rearSpeed = vw;
         s_.shockStroke = xs;
     }
 
     // --- Pneus ---
-    tire(s_.front, F, F.toWorld(L_.forkAxle), p.tireStiffnessFront, Iwf, terrain, dt, tqF);
-    tire(s_.rear, S, S.toWorld(L_.swingAxle), p.tireStiffnessRear, Iwr, terrain, dt, tqR);
+    tire(s_.front, F, F.toWorld(L_.forkAxle), aF, p.tireStiffnessFront, Iwf, terrain, dt, tqF);
+    tire(s_.rear, S, S.toWorld(L_.swingAxle), aR, p.tireStiffnessRear, Iwr, terrain, dt, tqR);
 
     // --- Moteur --- couple à la roue AR transmis par la chaîne.
     // Emplacement futur : boîte, embrayage.
     {
-        const double wheelRel = -(s_.rear.spin - C.angVel); // rotation "en avant" de la roue / châssis
+        const double wheelRel = -(s_.rear.spin - dot(C.angVel, aR)); // rotation "en avant" de la roue / châssis
         const double we = wheelRel * p.gearRatio;
         double crank = 0;
         // Sous engineLaunchSpeed, un embrayage virtuel patine et fournit le couple de ce régime.
@@ -284,12 +410,12 @@ void BikeSim::step(const Inputs& raw, const Terrain& terrain, double dt) {
         // du pivot = anti-squat ; la réaction (-T) s'applique au cadre au pignon de sortie.
         // La somme des couples (roue + bras + cadre) est nulle : la chaîne est interne à la moto.
         // shortcut: brin supérieur seul, même en frein moteur (T < 0) ; brin inférieur à l'étape boîte.
-        const Vec2 axle = S.toWorld(L_.swingAxle);
-        const Vec2 rearTop = axle + rotate(Vec2{0, p.rearSprocketRadius}, C.angle);
-        const Vec2 frontTop = C.toWorld(L_.countershaft + Vec2{0, p.frontSprocketRadius});
-        const Vec2 chain = frontTop - rearTop;
-        const Vec2 e = chain / length(chain);
-        const double arm = -cross(rearTop - axle, e); // distance axe AR -> ligne de chaîne (> 0)
+        // shortcut: chaîne dans le plan de symétrie (en vrai à gauche, ~10 cm) ; négligeable sur le lacet.
+        const Vec3 axle = S.toWorld(L_.swingAxle);
+        const Vec3 rearTop = axle + C.dirToWorld(kY) * p.rearSprocketRadius;
+        const Vec3 frontTop = C.toWorld(L_.countershaft + kY * p.frontSprocketRadius);
+        const Vec3 e = normalize(frontTop - rearTop);
+        const double arm = dot(cross(e, rearTop - axle), aR); // distance axe AR -> ligne de chaîne (> 0)
         const double T = wheelTorque / arm;
         S.applyForce(e * T, axle);
         C.applyForce(-e * T, frontTop);
@@ -300,135 +426,125 @@ void BikeSim::step(const Inputs& raw, const Terrain& terrain, double dt) {
     // --- Résistance au roulement et freins --- frottements traités de façon implicite :
     // on calcule la vitesse de roue prévue, et le couple de frottement est borné à celui qui
     // l'annule ce pas-ci -> une roue bloquée reste bloquée sans vibrer.
-    auto friction = [&](WheelState& w, double& tq, double I, RigidBody2D& carrier, double brakeTorque) {
+    auto friction = [&](WheelState& w, double& tq, double I, RigidBody3D& carrier, Vec3 a, double brakeTorque) {
         double wPred = w.spin + dt * tq / I;
         const double trr = p.rollingResistance * w.normalForce * w.radius;
         const double t1 = clampd(-wPred * I / dt, -trr, trr);
         tq += t1;
         wPred += dt * t1 / I;
         // Frein : frottement disque/étrier entre la roue et son porteur (fourche ou bras).
-        const double tb = clampd(-(wPred - carrier.angVel) * I / dt, -brakeTorque, brakeTorque);
+        const double tb = clampd(-(wPred - dot(carrier.angVel, a)) * I / dt, -brakeTorque, brakeTorque);
         tq += tb;
-        carrier.torque -= tb;
+        carrier.torque -= a * tb;
     };
-    friction(s_.front, tqF, Iwf, F, in.frontBrake * p.frontBrakeMaxTorque);
-    friction(s_.rear, tqR, Iwr, S, in.rearBrake * p.rearBrakeMaxTorque);
+    friction(s_.front, tqF, Iwf, F, aF, in.frontBrake * p.frontBrakeMaxTorque);
+    friction(s_.rear, tqR, Iwr, S, aR, in.rearBrake * p.rearBrakeMaxTorque);
 
-    // --- Chute : quelques points du châssis et du pilote ne traversent pas le sol ---
-    auto bodyContact = [&](RigidBody2D& b, Vec2 local) {
-        const Vec2 pt = b.toWorld(local);
-        const double pen = terrain.height(pt.x) - pt.y;
-        if (pen <= 0) return;
-        const Vec2 n = terrain.normal(pt.x), t{n.y, -n.x};
-        const Vec2 v = b.velocityAt(pt);
-        const double N = std::max(0.0, kBodyContactStiffness * pen - kBodyContactDamping * dot(v, n));
-        const double vt = dot(v, t);
-        const double Ft = -clampd(vt * b.mass / dt * 0.5, -kBodyContactMu * N, kBodyContactMu * N);
-        b.applyForce(n * N + t * Ft, pt);
-    };
-    for (Vec2 pt : {L_.skidPlate, L_.rearFender, L_.seat, L_.steeringHead}) bodyContact(C, pt);
-    for (Vec2 pt : {L_.riderHead, L_.riderHip}) bodyContact(R, pt);
+    // --- Chute : points du châssis et du pilote qui ne traversent pas le sol ---
+    for (Vec3 pt : {L_.skidPlate, L_.rearFender, L_.seat, L_.steeringHead})
+        bodyContact(C, pt, terrain, kBodyContactStiffness, kBodyContactDamping, dt);
+    for (double side : {-1.0, 1.0}) {
+        bodyContact(C, L_.bars + Vec3{0, 0, side * p.barWidth}, terrain, kBodyContactStiffness, kBodyContactDamping, dt);
+        bodyContact(C, L_.pegs + Vec3{0, 0, side * (p.pegWidth + 0.06)}, terrain, kBodyContactStiffness, kBodyContactDamping, dt);
+        bodyContact(R, L_.riderShoulder + Vec3{0, 0, side * 0.22}, terrain, kBodyContactStiffness, kBodyContactDamping, dt);
+    }
+    for (Vec3 pt : {L_.riderHead, L_.riderHip}) bodyContact(R, pt, terrain, kBodyContactStiffness, kBodyContactDamping, dt);
+    // Pied à terre : sous footDownSpeed le pilote sort les pieds (relevés progressivement sur 1 m/s
+    // au-dessus) ; ils ne portent que si la moto penche de leur côté.
+    s_.feetDown = p.footDownSpeed > 0 ? clampd(p.footDownSpeed + 1.0 - s_.speed, 0, 1) : 0.0;
+    for (double side : {-1.0, 1.0})
+        bodyContact(C, L_.foot + Vec3{0, 0, side * kFootOut}, terrain, kFootStiffness * s_.feetDown, kFootDamping * s_.feetDown, dt);
 
     // --- Intégration (Euler semi-implicite) ---
-    for (RigidBody2D* b : bodies) {
-        b->vel += b->force * (dt / b->mass);
-        b->angVel += b->torque * dt / b->inertia;
-    }
+    for (RigidBody3D* b : bodies) b->integrateVelocity(dt);
     s_.front.spin += tqF * dt / Iwf;
     s_.rear.spin += tqR * dt / Iwr;
     solveJoints(dt);
-    for (RigidBody2D* b : bodies) {
-        b->pos += b->vel * dt;
-        b->angle += b->angVel * dt;
-    }
-    s_.front.angle += s_.front.spin * dt;
-    s_.rear.angle += s_.rear.spin * dt;
+    for (RigidBody3D* b : bodies) b->integratePosition(dt);
+    s_.front.angle += (s_.front.spin - dot(F.angVel, aF)) * dt;
+    s_.rear.angle += (s_.rear.spin - dot(S.angVel, aR)) * dt;
     s_.time += dt;
     s_.speed = length(C.vel);
 }
 
-// Liaisons rigides par impulsions séquentielles (type Box2D) : on corrige les vitesses
-// pour respecter les liaisons, avec un terme de Baumgarte pour la dérive de position.
+// Liaisons rigides par impulsions séquentielles (type Box2D/Bullet) : chaque ligne de contrainte
+// a son jacobien J (linéaire + angulaire pour les deux corps) ; on corrige les vitesses pour
+// annuler J.v, avec un terme de Baumgarte pour la dérive de position.
 void BikeSim::solveJoints(double dt) {
     const BikeParams& p = p_;
-    RigidBody2D& C = s_.chassis;
-    RigidBody2D& F = s_.fork;
-    RigidBody2D& S = s_.swingarm;
-    const double mC = 1 / C.mass, iC = 1 / C.inertia;
-    const double mF = 1 / F.mass, iF = 1 / F.inertia;
-    const double mS = 1 / S.mass, iS = 1 / S.inertia;
+    RigidBody3D& C = s_.chassis;
+    RigidBody3D& F = s_.fork;
+    RigidBody3D& S = s_.swingarm;
     const double beta = kBaumgarte / dt;
+    constexpr double inf = std::numeric_limits<double>::infinity();
 
-    // Pivot du bras oscillant (2 lignes : x et y).
-    const Vec2 rC = rotate(L_.pivot, C.angle), rS = rotate(L_.swingPivot, S.angle);
-    const Vec2 pivotErr = (S.pos + rS) - (C.pos + rC);
-    const double k11 = mC + mS + iC * rC.y * rC.y + iS * rS.y * rS.y;
-    const double k12 = -iC * rC.x * rC.y - iS * rS.x * rS.y;
-    const double k22 = mC + mS + iC * rC.x * rC.x + iS * rS.x * rS.x;
-    const double detP = k11 * k22 - k12 * k12;
-
-    // Glissière de fourche : axe perpendiculaire bloqué + rotation bloquée.
-    const Vec2 u = rotate(L_.forkAxis, C.angle), n = perp(u);
-    const Vec2 rA = rotate(L_.frontAxle, C.angle), rB = rotate(L_.forkAxle, F.angle);
-    const Vec2 d = (F.pos + rB) - (C.pos + rA);
-    const double perpErr = dot(d, n), angErr = F.angle - C.angle, sF = dot(d, u);
-    const double a1 = cross(d + rA, n), a2 = cross(rB, n);
-    const double g11 = mC + mF + iC * a1 * a1 + iF * a2 * a2;
-    const double g12 = iC * a1 + iF * a2;
-    const double g22 = iC + iF;
-    const double detF = g11 * g22 - g12 * g12;
-    // Butées de sécurité de la fourche (le long de l'axe).
-    const double a1u = cross(d + rA, u), a2u = cross(rB, u);
-    const double kAx = mC + mF + iC * a1u * a1u + iF * a2u * a2u;
-    const double sMax = p.forkTravel + kHardStopMargin;
-    // Butées du bras (en angle).
-    const double phi = -(S.angle - C.angle), phiMax = (p.rearTravel + kHardStopMargin) / p.swingarmLength;
-    const double kAng = iC + iS;
-
-    // Ligne inégalité (butée) : impulsion cumulée >= 0 ; terme spéculatif err/dt quand
-    // on est encore loin de la butée -> elle n'agit que si on allait la dépasser.
-    auto limitImpulse = [&](double cdot, double err, double k, double& acc) {
-        const double rhs = cdot + (err < 0 ? beta * err : err / dt);
-        const double old = acc;
-        acc = std::max(old - rhs / k, 0.0);
-        return acc - old;
+    struct Row {
+        RigidBody3D *a, *b;
+        Vec3 la, aa, lb, ab; // jacobien
+        Vec3 ia, ib;         // I^-1 * partie angulaire
+        double eff, bias, lo, hi, acc;
     };
-    double accF0 = 0, accF1 = 0, accS0 = 0, accS1 = 0;
+    std::array<Row, 16> rows;
+    int n = 0;
+    auto add = [&](RigidBody3D& A, RigidBody3D& B, Vec3 la, Vec3 aa, Vec3 lb, Vec3 ab, double bias, double lo, double hi) {
+        Row& r = rows[n++];
+        r = {&A, &B, la, aa, lb, ab, A.invInertiaMul(aa), B.invInertiaMul(ab), 0, bias, lo, hi, 0};
+        r.eff = 1.0 / (dot(la, la) / A.mass + dot(aa, r.ia) + dot(lb, lb) / B.mass + dot(ab, r.ib));
+    };
+    auto equal = [&](RigidBody3D& A, RigidBody3D& B, Vec3 la, Vec3 aa, Vec3 lb, Vec3 ab, double err) {
+        add(A, B, la, aa, lb, ab, beta * err, -inf, inf);
+    };
+    // Butée (err >= 0 doit rester vrai) : terme spéculatif err/dt quand on est encore loin ->
+    // elle n'agit que si on allait la dépasser ce pas-ci.
+    auto limit = [&](RigidBody3D& A, RigidBody3D& B, Vec3 la, Vec3 aa, Vec3 lb, Vec3 ab, double err) {
+        add(A, B, la, aa, lb, ab, err < 0 ? beta * err : err / dt, 0, inf);
+    };
+    const Vec3 zero{};
+
+    // Pivot du bras : point commun (3 lignes) + axes de rotation alignés (2 lignes).
+    {
+        const Vec3 rA = C.dirToWorld(L_.pivot), rB = S.dirToWorld(L_.swingPivot);
+        const Vec3 err = (S.pos + rB) - (C.pos + rA);
+        for (Vec3 e : {kX, kY, kZ}) equal(C, S, -e, -cross(rA, e), e, cross(rB, e), dot(err, e));
+        const Vec3 zA = C.dirToWorld(kZ), angErr = cross(zA, S.dirToWorld(kZ));
+        for (Vec3 e : {C.dirToWorld(kX), C.dirToWorld(kY)}) equal(C, S, zero, -e, zero, e, dot(angErr, e));
+        // Butées du bras (en angle) : 0 <= phi <= phiMax.
+        const double phi = -swingAngle(), phiMax = (p.rearTravel + kHardStopMargin) / p.swingarmLength;
+        limit(C, S, zero, zA, zero, -zA, phi);
+        limit(C, S, zero, -zA, zero, zA, phiMax - phi);
+    }
+    // Direction + fourche : liaison cylindrique autour de l'axe de direction u.
+    {
+        const Vec3 u = C.dirToWorld(L_.forkAxis);
+        const Vec3 pA = C.toWorld(L_.steerAxisPoint), pB = F.toWorld(L_.forkAxisPoint);
+        const Vec3 rA = pA - C.pos, rB = pB - F.pos, d = pB - pA;
+        const Vec3 n1 = C.dirToWorld(normalize(cross(kZ, L_.forkAxis))), n2 = C.dirToWorld(kZ);
+        const Vec3 angErr = cross(u, F.dirToWorld(L_.forkAxis));
+        for (Vec3 e : {n1, n2}) {
+            equal(C, F, -e, -cross(rA + d, e), e, cross(rB, e), dot(d, e)); // l'axe de roue reste sur l'axe de direction
+            equal(C, F, zero, -e, zero, e, dot(angErr, e));                   // seule rotation permise : autour de u
+        }
+        // Butées de sécurité de la fourche (le long de l'axe) : 0 <= s <= sMax.
+        const double s = dot(d, u), sMax = p.forkTravel + kHardStopMargin;
+        limit(C, F, -u, -cross(rA + d, u), u, cross(rB, u), s);
+        limit(C, F, u, cross(rA + d, u), -u, -cross(rB, u), sMax - s);
+        // Butées de braquage : -lock <= delta <= lock.
+        const double delta = steerAngle();
+        limit(C, F, zero, -u, zero, u, delta + p.steerLock);
+        limit(C, F, zero, u, zero, -u, p.steerLock - delta);
+    }
 
     for (int it = 0; it < kSolverIterations; ++it) {
-        { // pivot
-            const Vec2 cd = S.vel + S.angVel * perp(rS) - C.vel - C.angVel * perp(rC) + pivotErr * beta;
-            const Vec2 P{-(k22 * cd.x - k12 * cd.y) / detP, -(-k12 * cd.x + k11 * cd.y) / detP};
-            C.vel -= P * mC;
-            C.angVel -= iC * cross(rC, P);
-            S.vel += P * mS;
-            S.angVel += iS * cross(rS, P);
-        }
-        { // glissière
-            const double c1 = dot(n, F.vel - C.vel) + a2 * F.angVel - a1 * C.angVel + beta * perpErr;
-            const double c2 = F.angVel - C.angVel + beta * angErr;
-            const double l1 = -(g22 * c1 - g12 * c2) / detF;
-            const double l2 = -(-g12 * c1 + g11 * c2) / detF;
-            C.vel -= n * (mC * l1);
-            C.angVel -= iC * (a1 * l1 + l2);
-            F.vel += n * (mF * l1);
-            F.angVel += iF * (a2 * l1 + l2);
-        }
-        { // butées fourche : s >= 0 (détente totale) et s <= sMax
-            const double cd = dot(u, F.vel - C.vel) + a2u * F.angVel - a1u * C.angVel;
-            double l = limitImpulse(cd, sF, kAx, accF0);
-            l -= limitImpulse(-cd, sMax - sF, kAx, accF1);
-            C.vel -= u * (mC * l);
-            C.angVel -= iC * a1u * l;
-            F.vel += u * (mF * l);
-            F.angVel += iF * a2u * l;
-        }
-        { // butées bras : phi >= 0 et phi <= phiMax
-            const double cd = C.angVel - S.angVel; // d(phi)/dt
-            double l = limitImpulse(cd, phi, kAng, accS0);
-            l -= limitImpulse(-cd, phiMax - phi, kAng, accS1);
-            C.angVel += iC * l;
-            S.angVel -= iS * l;
+        for (int i = 0; i < n; ++i) {
+            Row& r = rows[i];
+            const double cdot = dot(r.la, r.a->vel) + dot(r.aa, r.a->angVel) + dot(r.lb, r.b->vel) + dot(r.ab, r.b->angVel);
+            const double old = r.acc;
+            r.acc = clampd(old - (cdot + r.bias) * r.eff, r.lo, r.hi);
+            const double l = r.acc - old;
+            r.a->vel += r.la * (l / r.a->mass);
+            r.a->angVel += r.ia * l;
+            r.b->vel += r.lb * (l / r.b->mass);
+            r.b->angVel += r.ib * l;
         }
     }
 }
