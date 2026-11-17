@@ -197,3 +197,29 @@ vitesse tenue ou gaz coupés jusqu'à l'arrêt : aucune chute (avant : chute de 
 **À revérifier :**
 - Réactivité : bon compromis ? (curseur F1 > Pilote > « Guidon : bascule max » pour l'ajuster en direct)
 - Virages serrés lents (épingle, berm) : on passe sans tomber ?
+
+### 2026-11-18 — 3D : tourne très mal à basse vitesse, contre-braquage « ignoble »
+**Ressenti :**
+- À basse vitesse, ça tourne très mal.
+- Le contre-braquage est ignoble. S'inspirer de la direction de MX Bikes / MX Simulator.
+
+**Diagnostic :** le pilote simulé ne pilotait qu'en couple au guidon à partir de l'écart d'inclinaison : grands
+allers-retours du guidon (contre-braquage visible), et à basse vitesse incapable de « tourner le guidon » pour virer.
+
+**Modifications (nouveau pilote, principe des robots d'équilibre de vélo) :**
+- code : le stick demande une **courbure** de virage, plus une inclinaison : stick à fond = virage le plus serré
+  tenable (butée de braquage à basse vitesse, 34° à haute vitesse).
+- code : le pilote calcule l'**angle de guidon** à tenir par le modèle du pendule inversé,
+  δe = L/v² (h φ''_voulu − g tan φ) = braquage du virage établi + correction d'équilibre (braquer vers la chute),
+  et le tient avec ses bras (ressort-amortisseur). Le contre-braquage en sort, d'autant plus petit qu'on va vite.
+  Terme d'équilibre calculé avec v plafonnée à 7 m/s (sinon trop mou à haute vitesse).
+- `riderSteerGain` devient le suivi de bascule (8 /s), `riderBarHold` la fermeté des bras (250 N.m/rad),
+  `riderMaxSteerTorque` 40 → 50 N.m.
+
+**Mesures (stick à fond, vitesse tenue) :**
+- 11 km/h : rayon 3,6 m (avant : tournait à peine), incl. 20°, contre-braquage bref 11°.
+- 18 km/h : rayon 5,6 m, 30° en 1,0 s, contre-braquage 6°. 29 km/h : rayon 12 m, 32° en 1,1 s, 3°.
+- 50 km/h : 36° en 1,5 s, contre-braquage 2°. Gaz coupés en virage jusqu'à l'arrêt : aucune chute.
+
+**À revérifier :**
+- Virages lents : tourne bien maintenant ? Le contre-braquage est-il acceptable (visible surtout sous 20 km/h) ?

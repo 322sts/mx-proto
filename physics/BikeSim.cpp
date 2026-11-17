@@ -351,24 +351,36 @@ void BikeSim::step(const Inputs& raw, const Terrain& terrain, double dt) {
         const Vec3 rightH = normalize(cross(fwd, kY));
         const double lean = std::atan2(dot(up, rightH), dot(up, kY));
         const double leanRate = dot(C.angVel, normalize(Vec3{fwd.x, 0, fwd.z}));
-        // Pilote, en deux étages comme un humain : l'écart d'inclinaison donne une vitesse de bascule
-        // voulue (plafonnée), puis il pousse sur le guidon pour suivre cette vitesse. Pour pencher à
-        // droite il pousse le guidon vers la gauche (couple > 0) : la roue part à gauche, le contact
-        // file sous la moto, elle tombe à droite = contre-braquage, non programmé.
-        // Un virage stable à l'inclinaison φ a un rayon v²/(g tan φ) ; il ne peut pas être plus serré
-        // que ce que permet la butée de braquage (R_min ≈ 1,5 x empattement / tan(butée effective)).
-        // Le pilote penche donc moins quand il va lentement, sinon la moto tombe à l'intérieur.
-        const double rMin = 1.5 * p.wheelbase / std::tan(p.steerLock * std::cos(p.rakeAngle));
-        const double leanCap = std::min(p.riderMaxLean, std::atan(s_.speed * s_.speed / (kGravity * rMin)));
-        const double want = clampd(in.steer * p.riderMaxLean, -leanCap, leanCap);
+        // Pilote : le stick demande une courbure de virage (stick à fond = le plus serré possible :
+        // butée de braquage à basse vitesse, inclinaison max à haute vitesse). L'inclinaison
+        // d'équilibre de ce virage est tan φ* = v² κ / g.
+        const double v = std::max(s_.speed, 1.0), L = p.wheelbase;
+        const double rMin = 1.5 * L / std::tan(p.steerLock * std::cos(p.rakeAngle)); // virage le plus serré tenable
+        const double kappa = in.steer * std::min(1.0 / rMin, kGravity * std::tan(p.riderMaxLean) / (v * v));
+        const double want = std::atan(v * v * kappa / kGravity);
+        // Il choisit une bascule voulue (vitesse de roulis plafonnée), d'où une accélération de roulis
+        // voulue, et en déduit l'angle de guidon par le modèle du pendule inversé sur ses roues :
+        //   h φ'' = g tan φ + (v²/L) δe   (δe = braquage effectif, + = à gauche)
+        //   => δe = (L / v²) (h φ''_voulu - g tan φ).
+        // Le terme -g tan φ L / v² est le braquage du virage établi (empattement x courbure) ; le reste
+        // est l'équilibre : braquer du côté où elle tombe. Pour pencher à droite il braque d'abord un
+        // peu à gauche (contre-braquage), d'autant moins qu'il va vite. Rien n'est imposé à la moto :
+        // il tient le guidon avec ses bras (ressort-amortisseur), la chasse, le gyroscope et les pneus agissent.
+        constexpr double h = 0.8; // m, hauteur du CdG moto + pilote dans le modèle mental du pilote
         const double rate = clampd(p.riderLeanResponse * (want - lean), -p.riderMaxRollRate, p.riderMaxRollRate);
-        const double tauLean = p.riderSteerGain * (rate - leanRate);
-        // Presque à l'arrêt (pieds posés), braquer ne fait plus pencher la moto : le pilote tient
-        // simplement le guidon à l'angle demandé par le stick (droite = braque à droite). Dès qu'elle
-        // roule (au-delà de ~1,5 m/s) il équilibre de nouveau par le guidon, comme un vrai pilote au pas.
-        const double tauHold = p.riderBarHold * (-in.steer * p.steerLock - delta) - 0.1 * p.riderBarHold * deltaDot;
+        const double rollAcc = p.riderSteerGain * (rate - leanRate);
+        // Le terme d'équilibre est calculé avec une vitesse plafonnée : à haute vitesse le vrai 1/v² le
+        // rendrait trop faible face aux efforts de la roue AV sur le guidon (chasse, gyroscope, pneu),
+        // et l'inclinaison dériverait au-delà de la cible. Un pilote corrige plus fermement que le modèle.
+        const double vFb = std::min(v, 7.0);
+        const double deltaLean = clampd(((L / (vFb * vFb)) * h * rollAcc - (L / (v * v)) * kGravity * std::tan(clampd(lean, -1.2, 1.2))) / std::cos(p.rakeAngle),
+                                        -p.steerLock, p.steerLock);
+        // Presque à l'arrêt (pieds posés), braquer ne fait plus pencher la moto : il tourne simplement
+        // le guidon comme demandé par le stick (droite = braque à droite).
         const double w = clampd(s_.speed - 0.5, 0, 1);
-        const double tauRider = clampd(w * tauLean + (1 - w) * tauHold, -p.riderMaxSteerTorque, p.riderMaxSteerTorque);
+        const double deltaCmd = w * deltaLean + (1 - w) * (-in.steer * p.steerLock);
+        const double tauRider = clampd(p.riderBarHold * (deltaCmd - delta) - 0.05 * p.riderBarHold * deltaDot,
+                                       -p.riderMaxSteerTorque, p.riderMaxSteerTorque);
         const double tau = tauRider - p.steerDamping * deltaDot;
         F.torque += u * tau;
         C.torque -= u * tau;

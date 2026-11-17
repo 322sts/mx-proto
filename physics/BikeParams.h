@@ -111,14 +111,15 @@ struct BikeParams {
     // Gainage : genoux serrés sur la moto, le pilote suit le roulis et le lacet de la moto.
     double riderGripStiffness = 3000.0; // N.m/rad
     double riderGripDamping = 200.0;    // N.m.s/rad
-    // Le pilote vise l'inclinaison demandée en poussant sur le guidon (couple autour de l'axe
-    // de direction) : le contre-braquage n'est pas programmé, il sort de la physique.
-    double riderMaxLean = 0.60;         // rad    inclinaison visée stick à fond (34° ; tan = 0,67 < mu : marge avant la glisse)
+    // Direction : le stick demande une courbure de virage ; le pilote en déduit l'angle de guidon
+    // (virage établi + équilibre) et tient le guidon avec ses bras. Le contre-braquage n'est pas
+    // programmé : il sort du calcul d'équilibre et de la physique.
+    double riderMaxLean = 0.60;         // rad    inclinaison stick à fond à haute vitesse (34° ; tan = 0,67 < mu)
     double riderLeanResponse = 2.2;     // 1/s    vitesse de bascule voulue par radian d'écart d'inclinaison
     double riderMaxRollRate = 0.7;      // rad/s  bascule la plus rapide qu'il s'autorise (~40°/s)
-    double riderSteerGain = 80.0;       // N.m.s/rad couple au guidon par rad/s d'écart de vitesse de bascule
-    double riderMaxSteerTorque = 40.0;  // N.m    force max dans le guidon
-    double riderBarHold = 30.0;         // N.m/rad à basse vitesse : il tient le guidon à l'angle du stick
+    double riderSteerGain = 8.0;        // 1/s    vivacité avec laquelle il suit la bascule voulue
+    double riderBarHold = 250.0;        // N.m/rad fermeté des bras sur le guidon (ressort vers l'angle voulu)
+    double riderMaxSteerTorque = 50.0;  // N.m    force max dans le guidon
     double footDownSpeed = 1.5;         // m/s    en dessous (~5 km/h), le pilote pose les pieds
 };
 

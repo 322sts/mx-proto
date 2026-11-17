@@ -37,10 +37,11 @@ on construit la physique dans ce prototype léger (compile + relance en quelques
   forces bornées à celles qui annulent le glissement en un pas (stabilité).
 - Pilote : corps relié aux 2 repose-pieds et aux 2 poignées par ressorts-amortisseurs + gainage roulis/lacet (genoux) ;
   le stick décale les points d'attache (±25 cm, vitesse limitée) → vrai transfert de poids.
-  Direction : le stick gauche donne l'inclinaison visée (±34°) ; le pilote simulé pousse sur le guidon (couple autour
-  de l'axe, max 40 N.m) pour suivre une vitesse de bascule voulue → le contre-braquage émerge, rien n'est imposé.
-  Il penche moins quand il va lentement (tan φ ≤ v²/(g·R_min), R_min tiré de la butée de braquage).
-  Presque à l'arrêt (< 1,5 m/s), il tient le guidon à l'angle demandé par le stick (droite = braque à droite).
+  Direction : le stick gauche demande une courbure de virage (à fond = le plus serré possible : butée de braquage
+  lente, 34° d'inclinaison vite). Le pilote simulé en déduit l'angle de guidon par le pendule inversé
+  (δe = L/v² (h φ''_voulu − g tan φ) : virage établi + équilibre) et le tient avec ses bras (ressort 250 N.m/rad) ;
+  la chasse, le gyroscope et les pneus agissent toujours → le contre-braquage émerge, rien n'est imposé.
+  Presque à l'arrêt (< 1,5 m/s), il tourne simplement le guidon comme le stick (droite = braque à droite).
   Pied à terre sous 1,5 m/s (contacts ressort aux pieds, ne portent que si la moto penche).
 - Moteur : courbe couple/régime, rapport unique 13:1, embrayage virtuel qui patine sous 4000 tr/min, frein moteur,
   inertie vilebrequin ramenée à la roue. Chaîne : tension = couple roue / bras de levier, tire l'axe AR vers le pignon

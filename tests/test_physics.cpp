@@ -199,7 +199,7 @@ TEST_CASE("virage serré en coupant les gaz jusqu'à l'arrêt : la moto ne tombe
         Inputs in;
         in.steer = 1; // stick à fond, gaz coupés : elle ralentit en virage jusqu'à s'arrêter
         double maxLean = 0;
-        for (int i = 0; i < 6000; ++i) {
+        for (int i = 0; i < 15000; ++i) {
             sim.step(in, flat(), 0.001);
             maxLean = std::max(maxLean, std::abs(sim.state().leanAngle));
         }
