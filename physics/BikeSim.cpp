@@ -57,7 +57,7 @@ Vec3 rodInertia(double m, double len, Vec3 u) {
 }
 } // namespace
 
-void BikeSim::reset(const BikeParams& p, const Terrain& terrain, double x) {
+void BikeSim::reset(const BikeParams& p, const Terrain& terrain, double x, double z, double yaw) {
     p_ = p;
     s_ = BikeState{};
     const double Rf = p.frontWheelRadius, Rr = p.rearWheelRadius;
@@ -115,11 +115,16 @@ void BikeSim::reset(const BikeParams& p, const Terrain& terrain, double x) {
     L_.riderShoulder = {0.12, 0.40, 0};
     L_.riderHead = {0.18, 0.58, 0};
 
-    // Placement : axe AR 1 cm au-dessus du sol, moto droite cap +x, tout à l'arrêt.
-    const Vec3 origin{x, terrain.height(x, 0) + Rr + 0.01, 0};
+    // Placement : axe AR 1 cm au-dessus du sol (le plus haut des deux sols sous les roues), moto
+    // droite au cap demandé, tout à l'arrêt.
+    const Quat heading = axisAngle(kY, yaw);
+    const Vec3 fwd = rotate(heading, kX);
+    const double ground = std::max(terrain.height(x, z), terrain.height(x + fwd.x * p.wheelbase, z + fwd.z * p.wheelbase));
+    const Vec3 origin{x, ground + Rr + 0.01, z};
     auto place = [&](RigidBody3D& b, Vec3 designCom, double m, Vec3 I) {
         b = RigidBody3D{};
-        b.pos = origin + designCom;
+        b.pos = origin + rotate(heading, designCom);
+        b.q = heading;
         b.mass = m;
         b.inertia = I;
     };

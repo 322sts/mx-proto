@@ -65,8 +65,10 @@ struct BikeLayout {
 
 class BikeSim {
 public:
-    // Construit la moto à l'abscisse x de la piste (z = 0, cap +x) et la laisse se poser (freins serrés).
-    void reset(const BikeParams& params, const Terrain& terrain, double x);
+    // Construit la moto au point (x, z), cap yaw (lacet autour de +y, 0 = vers +x, + = vers la gauche),
+    // et la laisse se poser (freins serrés).
+    void reset(const BikeParams& params, const Terrain& terrain, double x, double z = 0, double yaw = 0);
+    void reset(const BikeParams& params, const Terrain& terrain, const Spawn& at) { reset(params, terrain, at.x, at.z, at.yaw); }
     void step(const Inputs& inputs, const Terrain& terrain, double dt);
 
     BikeParams& params() { return p_; } // modifiable en roulant (sauf champs needsReset)

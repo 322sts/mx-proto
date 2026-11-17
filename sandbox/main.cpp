@@ -2,11 +2,11 @@
 // La physique est entièrement dans mx_physics ; ici on ne fait que lire les commandes,
 // avancer la sim à pas fixe et dessiner.
 #include "BikeSim.h"
+#include "Render.h"
 
 #include "imgui.h"
 #include "implot.h"
 #include "raylib.h"
-#include "raymath.h"
 #include "rlImGui.h"
 #include "rlgl.h"
 
@@ -26,6 +26,7 @@ constexpr int kMaxSubsteps = 50; // par image : au-delà on abandonne le retard 
 constexpr double kDeg = 57.2958;
 
 Vector3 V(Vec3 v) { return {float(v.x), float(v.y), float(v.z)}; }
+constexpr double PI_ = 3.14159265358979;
 
 // ---------------------------------------------------------------- Commandes
 struct Controls {
@@ -130,160 +131,12 @@ bool loadPreset(BikeParams& p, const std::string& path) {
     return true;
 }
 
-// ---------------------------------------------------------------- Dessin
-// Maillage de la piste, construit une fois : triangles non indexés (raylib indexe en 16 bits),
-// éclairage d'un soleil fixe et damier de 2 m cuits dans les couleurs des sommets.
-Model buildTerrainModel(const Terrain& t) {
-    const double dx = 0.25, dz = 0.5;
-    const int nx = int((t.xMax() - t.xMin()) / dx), nz = int((t.zMax() - t.zMin()) / dz);
-    Mesh mesh{};
-    mesh.triangleCount = nx * nz * 2;
-    mesh.vertexCount = mesh.triangleCount * 3;
-    mesh.vertices = static_cast<float*>(MemAlloc(sizeof(float) * 3 * mesh.vertexCount));
-    mesh.colors = static_cast<unsigned char*>(MemAlloc(4 * mesh.vertexCount));
-    const Vec3 sun = normalize(Vec3{0.4, 1.0, 0.3});
-    int k = 0;
-    auto vertex = [&](double x, double z) {
-        const double h = t.height(x, z);
-        const Vec3 n = t.normal(x, z);
-        const bool lane = std::abs(z) < 9;
-        const bool check = (int(std::floor(x / 2)) + int(std::floor(z / 2))) & 1;
-        const double shade = (0.55 + 0.45 * std::max(0.0, dot(n, sun))) * (check ? 0.94 : 1.0);
-        const double r = lane ? 139 : 150, g = lane ? 100 : 125, b = lane ? 62 : 80;
-        mesh.vertices[3 * k] = float(x);
-        mesh.vertices[3 * k + 1] = float(h);
-        mesh.vertices[3 * k + 2] = float(z);
-        mesh.colors[4 * k] = (unsigned char)(r * shade);
-        mesh.colors[4 * k + 1] = (unsigned char)(g * shade);
-        mesh.colors[4 * k + 2] = (unsigned char)(b * shade);
-        mesh.colors[4 * k + 3] = 255;
-        ++k;
-    };
-    for (int i = 0; i < nx; ++i) {
-        for (int j = 0; j < nz; ++j) {
-            const double x0 = t.xMin() + i * dx, x1 = x0 + dx, z0 = t.zMin() + j * dz, z1 = z0 + dz;
-            // Sens antihoraire vu du dessus (y vers le haut).
-            vertex(x0, z0); vertex(x0, z1); vertex(x1, z0);
-            vertex(x1, z0); vertex(x0, z1); vertex(x1, z1);
-        }
-    }
-    UploadMesh(&mesh, false);
-    return LoadModelFromMesh(mesh);
-}
-
-void tube(Vec3 a, Vec3 b, double r, Color c) { DrawCylinderEx(V(a), V(b), float(r), float(r), 8, c); }
-
-// Articulation (genou/coude) entre a et b, segments l1 et l2, pliée du côté de "bend".
-Vec3 ik(Vec3 a, Vec3 b, double l1, double l2, Vec3 bend) {
-    const Vec3 d = b - a;
-    const double len = std::max(length(d), 1e-6), L = std::min(len, l1 + l2 - 1e-3);
-    const Vec3 u = d / len;
-    const double x = (l1 * l1 - l2 * l2 + L * L) / (2 * L);
-    const Vec3 n = normalize(bend - u * dot(bend, u));
-    return a + u * x + n * std::sqrt(std::max(0.0, l1 * l1 - x * x));
-}
-
-// Roue : pneu en tore (24 tronçons), jante, 6 rayons qui tournent avec la roue.
-void drawWheel(const WheelState& w, const RigidBody3D& carrier) {
-    const Vec3 a = carrier.dirToWorld(kZ);
-    const Quat spin = carrier.q * axisAngle(kZ, w.angle);
-    const double R = w.radius;
-    for (int i = 0; i < 24; ++i) {
-        const double t0 = i * 2 * PI / 24, t1 = (i + 1) * 2 * PI / 24;
-        auto ring = [&](double t, double r) { return w.center + rotate(carrier.q, Vec3{std::cos(t), std::sin(t), 0}) * r; };
-        tube(ring(t0, R - 0.045), ring(t1, R - 0.045), 0.045, {30, 30, 30, 255});
-        tube(ring(t0, R - 0.1), ring(t1, R - 0.1), 0.012, {170, 170, 175, 255});
-    }
-    for (int i = 0; i < 6; ++i) {
-        const Vec3 dir = rotate(spin, Vec3{std::cos(i * PI / 3), std::sin(i * PI / 3), 0});
-        tube(w.center + a * (i % 2 ? 0.03 : -0.03), w.center + dir * (R - 0.1), 0.004, {150, 150, 150, 255});
-    }
-    tube(w.center - a * 0.06, w.center + a * 0.06, 0.03, {90, 90, 90, 255});
-}
-
-void drawBike(const BikeSim& sim, bool forces) {
-    const BikeState& s = sim.state();
-    const BikeLayout& L = sim.layout();
-    const BikeParams& p = const_cast<BikeSim&>(sim).params();
-    const RigidBody3D &C = s.chassis, &F = s.fork, &S = s.swingarm, &R = s.rider;
-    const Color frame{220, 90, 20, 255}, metal{120, 120, 130, 255}, gold{210, 170, 60, 255}, plastic{40, 40, 160, 255};
-    const Vec3 Z = C.dirToWorld(kZ);
-
-    drawWheel(s.rear, S);
-    drawWheel(s.front, F);
-
-    // Bras oscillant (deux branches) + amortisseur.
-    const Vec3 pivot = C.toWorld(L.pivot), rearAxle = S.toWorld(L.swingAxle);
-    for (double side : {-1.0, 1.0}) tube(pivot + Z * (side * 0.09), rearAxle + Z * (side * 0.09), 0.025, metal);
-    const Vec3 shockTop = C.toWorld(L.shockTop), shockLow = pivot + (rearAxle - pivot) * 0.35;
-    tube(shockTop, shockLow, 0.03, {230, 200, 30, 255});
-
-    // Cadre, moteur, selle/réservoir, repose-pieds.
-    const Vec3 head = C.toWorld(L.steeringHead), seat = C.toWorld(L.seat), skid = C.toWorld(L.skidPlate);
-    const Vec3 fender = C.toWorld(L.rearFender), pegs = C.toWorld(L.pegs);
-    for (auto [a, b] : {std::pair{head, skid}, {head, seat}, {seat, fender}, {seat, pivot}, {skid, pivot}}) tube(a, b, 0.022, frame);
-    rlPushMatrix();
-    const Matrix m = MatrixMultiply(QuaternionToMatrix({float(C.q.x), float(C.q.y), float(C.q.z), float(C.q.w)}),
-                                    MatrixTranslate(float(C.pos.x), float(C.pos.y), float(C.pos.z)));
-    rlMultMatrixf(MatrixToFloatV(m).v);
-    const Vec3 eng = L.skidPlate + Vec3{0.0, 0.2, 0};
-    DrawCube(V(eng), 0.38f, 0.32f, 0.26f, {70, 70, 75, 255});
-    rlPopMatrix();
-    tube(head + C.dirToWorld(kX) * -0.05, seat + C.dirToWorld(kY) * 0.03, 0.09, plastic);
-    tube(seat, fender, 0.05, plastic);
-    for (double side : {-1.0, 1.0}) tube(pegs, pegs + Z * (side * (p.pegWidth + 0.05)), 0.018, metal);
-
-    // Direction : le guidon et les tés tournent autour de l'axe de direction avec le bloc avant.
-    const Vec3 u = C.dirToWorld(L.forkAxis), axisPt = C.toWorld(L.steerAxisPoint);
-    const Quat steerQ = axisAngle(u, s.steerAngle);
-    auto steered = [&](Vec3 world) { return axisPt + rotate(steerQ, world - axisPt); };
-    const Vec3 barsMid = steered(C.toWorld(L.bars)), barZ = rotate(steerQ, Z);
-    tube(barsMid - barZ * p.barWidth, barsMid + barZ * p.barWidth, 0.014, metal);
-    tube(head, barsMid, 0.02, metal);
-    // Fourche : fourreaux (bloc avant) + tubes plongeurs jusqu'au té du haut.
-    const Vec3 axle = F.toWorld(L.forkAxle), Zf = F.dirToWorld(kZ), uf = F.dirToWorld(L.forkAxis);
-    const Vec3 offset = L.frontAxle - L.steerAxisPoint; // déport, repère châssis
-    for (double side : {-1.0, 1.0}) {
-        const Vec3 low = axle + Zf * (side * 0.09);
-        tube(low, low + uf * 0.5, 0.035, {50, 50, 55, 255});
-        tube(low + uf * 0.45, steered(C.toWorld(L.steeringHead + offset + kZ * (side * 0.09))), 0.026, gold);
-    }
-
-    // Pilote : bassin, buste, tête ; genoux et coudes posés par cinématique inverse.
-    const Vec3 hip = R.toWorld(L.riderHip), shoulder = R.toWorld(L.riderShoulder), headR = R.toWorld(L.riderHead);
-    const Vec3 Zr = R.dirToWorld(kZ), fwd = C.dirToWorld(kX), up = C.dirToWorld(kY);
-    const Color suit{30, 110, 200, 255}, pants{230, 230, 230, 255};
-    tube(hip, shoulder, 0.13, suit);
-    DrawSphere(V(headR), 0.13f, {240, 240, 240, 255});
-    for (double side : {-1.0, 1.0}) {
-        const Vec3 h = hip + Zr * (side * 0.11), sh = shoulder + Zr * (side * 0.19);
-        const Vec3 foot = pegs + Z * (side * p.pegWidth), grip = barsMid + barZ * (side * (p.barWidth - 0.05));
-        const Vec3 knee = ik(h, foot, 0.46, 0.46, fwd), elbow = ik(sh, grip, 0.30, 0.32, Z * side * 0.5 - up - fwd * 0.3);
-        tube(h, knee, 0.07, pants);
-        tube(knee, foot, 0.055, pants);
-        tube(sh, elbow, 0.05, suit);
-        tube(elbow, grip, 0.045, suit);
-    }
-    DrawSphere(V(R.pos), 0.03f, RED); // CdG pilote
-
-    if (forces) {
-        for (const WheelState* w : {&s.front, &s.rear}) {
-            if (!w->contact) continue;
-            const RigidBody3D& carrier = w == &s.front ? F : S;
-            const Vec3 tx = normalize(cross(w->normal, carrier.dirToWorld(kZ))), ty = cross(tx, w->normal);
-            const double k = 1.0 / 2500; // m par N
-            tube(w->contactPoint, w->contactPoint + w->normal * (w->normalForce * k), 0.012, RED);
-            tube(w->contactPoint, w->contactPoint + tx * (w->longForce * k), 0.012, {0, 160, 255, 255});
-            tube(w->contactPoint, w->contactPoint + ty * (w->latForce * k), 0.012, {40, 220, 60, 255});
-        }
-    }
-}
-
 } // namespace
 
 int main() {
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
     InitWindow(1600, 900, "MX Proto - Etape 2 (3D)");
+    SetTargetFPS(144); // sans limite, la carte graphique tourne à vide à 1000+ images/s
     SetExitKey(KEY_NULL);
 
     rlImGuiBeginInitImGui();
@@ -294,10 +147,11 @@ int main() {
     ImPlot::CreateContext();
 
     const Terrain track = Terrain::makeTestTrack();
-    const Model terrainModel = buildTerrainModel(track);
+    Renderer renderer;
+    renderer.init(track);
     BikeSim sim;
-    double resetX = Terrain::kStartX;
-    sim.reset(BikeParams{}, track, resetX);
+    std::string spawnName = "Départ";
+    sim.reset(BikeParams{}, track, track.spawn(spawnName));
 
     Controls controls;
     History hist;
@@ -310,12 +164,13 @@ int main() {
     char presetPath[256] = "presets/mon_reglage.ini";
     std::string status;
 
-    auto doReset = [&](double x) {
-        resetX = x;
-        sim.reset(sim.params(), track, x);
+    auto doReset = [&](const std::string& name) {
+        spawnName = name;
+        const Spawn& at = track.spawn(name);
+        sim.reset(sim.params(), track, at);
         hist.clear();
         accum = 0;
-        camYaw = 0;
+        camYaw = at.yaw;
     };
 
     while (!WindowShouldClose()) {
@@ -323,10 +178,10 @@ int main() {
         const bool kb = !ImGui::GetIO().WantCaptureKeyboard;
 
         if (kb) {
-            if (IsKeyPressed(KEY_R)) doReset(Terrain::kStartX);
-            if (IsKeyPressed(KEY_ONE)) doReset(Terrain::kJump1X);
-            if (IsKeyPressed(KEY_TWO)) doReset(Terrain::kJump2X);
-            if (IsKeyPressed(KEY_THREE)) doReset(Terrain::kWhoopsX);
+            if (IsKeyPressed(KEY_R)) doReset(spawnName);
+            const auto& spawns = track.spawns();
+            for (int k = 0; k < int(spawns.size()) && k < 9; ++k)
+                if (IsKeyPressed(KeyboardKey(KEY_ONE + k))) doReset(spawns[k].name);
             if (IsKeyPressed(KEY_P)) paused = !paused;
             if (IsKeyPressed(KEY_T)) slowmo = !slowmo;
             if (IsKeyPressed(KEY_C)) sideView = !sideView;
@@ -355,21 +210,22 @@ int main() {
         const Vec3 fwd = s.chassis.dirToWorld(kX);
         if (fwd.x * fwd.x + fwd.z * fwd.z > 0.01) {
             const double yaw = std::atan2(-fwd.z, fwd.x);
-            camYaw += std::remainder(yaw - camYaw, 2 * PI) * (1 - std::exp(-2.5 * frameDt));
+            camYaw += std::remainder(yaw - camYaw, 2 * PI_) * (1 - std::exp(-2.5 * frameDt));
         }
         const Vec3 back{-std::cos(camYaw), 0, std::sin(camYaw)}, right{std::sin(camYaw), 0, std::cos(camYaw)};
         Camera3D camera{};
         camera.target = V(camTarget + Vec3{0, 0.4, 0});
-        camera.position = V(sideView ? camTarget + right * camDist + Vec3{0, 0.5, 0} : camTarget + back * camDist + Vec3{0, 1.6, 0});
+        camera.position = V(sideView ? camTarget + right * camDist + Vec3{0, 0.5, 0} : camTarget + back * camDist + Vec3{0, 0.9 + 0.2 * camDist, 0});
         camera.up = {0, 1, 0};
         camera.fovy = 55;
         camera.projection = CAMERA_PERSPECTIVE;
 
         BeginDrawing();
-        ClearBackground({170, 205, 235, 255});
+        ClearBackground(Renderer::kSky);
         BeginMode3D(camera);
-        DrawModel(terrainModel, {0, 0, 0}, 1, WHITE);
-        drawBike(sim, showForces);
+        renderer.drawWorld(camera);
+        renderer.drawShadow(sim, track);
+        renderer.drawBike(sim, showForces);
         EndMode3D();
 
         rlImGuiBegin();
@@ -395,7 +251,12 @@ int main() {
         if (paused) ImGui::TextColored({1, 0.4f, 0.4f, 1}, "PAUSE (P)");
         if (slowmo) ImGui::TextColored({1, 0.8f, 0.2f, 1}, "RALENTI x0.25 (T)");
         ImGui::TextDisabled(IsGamepadAvailable(0) ? "Manette OK" : "Pas de manette : clavier (W/S gaz/frein, A/D direction, Q/E pilote, Espace)");
-        ImGui::TextDisabled("R départ  1/2/3 saut 1/saut 2/whoops  C vue côté  P pause  T ralenti  F1 panneau  molette zoom");
+        {
+            std::string keys = "R recommencer (" + spawnName + ")  ";
+            for (size_t k = 0; k < track.spawns().size(); ++k) keys += std::to_string(k + 1) + " " + track.spawns()[k].name + "  ";
+            ImGui::TextDisabled("%s", keys.c_str());
+        }
+        ImGui::TextDisabled("C vue côté  P pause  T ralenti  F1 panneau  molette zoom");
         ImGui::End();
 
         if (showPanel) {
@@ -404,7 +265,7 @@ int main() {
             ImGui::Begin("Réglages (F1)");
             if (ImGui::Button("Valeurs par défaut")) {
                 sim.params() = BikeParams{};
-                doReset(resetX);
+                doReset(spawnName);
                 status = "Valeurs par défaut";
             }
             ImGui::InputText("Fichier", presetPath, sizeof presetPath);
@@ -414,7 +275,7 @@ int main() {
                 BikeParams p = sim.params();
                 if (loadPreset(p, presetPath)) {
                     sim.params() = p;
-                    doReset(resetX);
+                    doReset(spawnName);
                     status = "Preset chargé";
                 } else {
                     status = "Fichier introuvable";
@@ -438,7 +299,7 @@ int main() {
                 if (ImGui::SliderFloat(i.label, &v, float(i.min * i.displayScale), float(i.max * i.displayScale), i.format,
                                        ImGuiSliderFlags_AlwaysClamp))
                     field = clampd(v / i.displayScale, i.min, i.max);
-                if (i.needsReset && ImGui::IsItemDeactivatedAfterEdit()) doReset(resetX);
+                if (i.needsReset && ImGui::IsItemDeactivatedAfterEdit()) doReset(spawnName);
                 ImGui::PopID();
             }
 
@@ -466,7 +327,7 @@ int main() {
         EndDrawing();
     }
 
-    UnloadModel(terrainModel);
+    renderer.unload();
     ImPlot::DestroyContext();
     rlImGuiShutdown();
     CloseWindow();

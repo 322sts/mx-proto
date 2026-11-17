@@ -11,10 +11,13 @@ on construit la physique dans ce prototype léger (compile + relance en quelques
   - `Math3D.h` : Vec3, Quat, RigidBody3D (inertie diagonale, terme gyroscopique ω×Iω) ; à remplacer pour Unreal.
   - `BikeParams.h/.cpp` : `BikeParams` (tous les réglages, défauts réalistes, unité en commentaire),
     `Inputs`, et `paramTable()` (libellés, bornes stables, unité d'affichage) utilisé par l'UI, les presets et les tests.
-  - `Terrain.h/.cpp` : carte de hauteurs h(x, z) (mailles 10 cm, bicubique Catmull-Rom C1), normale, piste de test
-    (bande de 10 m le long de x au milieu d'une zone plate de 80 m de large pour tourner), `makeFlat()` pour les tests.
-  - `BikeSim.h/.cpp` : `reset(params, terrain, x)` (z = 0, cap +x), `step(inputs, terrain, dt)`, `state()`, `layout()`.
-- `sandbox/main.cpp` — jeu de test : raylib (rendu + manette), Dear ImGui via rlImGui (réglages), ImPlot (courbes).
+  - `Terrain.h/.cpp` : carte de hauteurs h(x, z) (mailles 10 cm, bicubique Catmull-Rom C1), normale, circuit de test
+    en boucle (~420 m, piste de 8 m : double, table, berms, virage à plat, chicane, rouleaux, whoops) généré par une
+    « tortue » + profil le long de la ligne médiane ; points de départ nommés (`spawns()`), `makeFlat()` pour les tests.
+  - `BikeSim.h/.cpp` : `reset(params, terrain, x, z, yaw)` ou `reset(params, terrain, spawn)`, `step(inputs, terrain, dt)`, `state()`, `layout()`.
+- `sandbox/main.cpp` — jeu de test : boucle, manette/clavier, caméra, Dear ImGui via rlImGui (réglages), ImPlot (courbes).
+- `sandbox/Render.h/.cpp` — rendu raylib : shader soleil + ciel + brume (GLSL en texte), terrain en blocs avec herbe/terre/grain,
+  décor (piquets, bottes de paille, grille de départ, arbres), ombre de la moto, moto et pilote détaillés. Dessin seulement.
 - `tests/` — doctest : terrain lisse, repos sans vibration, accélération, ligne droite, anti-squat, gaz en l'air,
   virage établi (tan φ = v²/gR), contre-braquage émergent, chaque curseur à ses bornes.
 - Dépendances via FetchContent, versions épinglées : raylib 5.5, imgui 1.93.0, implot 1.1, rlImGui @5c17e70, doctest 2.5.3.
@@ -65,8 +68,8 @@ Hors Developer PowerShell, cmake est dans
 ## Commandes de jeu
 Gâchette droite gaz · gâchette gauche frein AV · LB frein AR (progressif) · stick gauche horizontal : inclinaison
 visée (direction) · stick droit (ou gauche) vertical : pilote avant/arrière. Clavier : W/S ou ↑/↓ gaz/frein AV,
-A/D ou ←/→ direction, Q/E pilote arrière/avant, Espace frein AR. R départ · 1/2/3 avant saut 1 / saut 2 / whoops ·
-C vue de côté · P pause · T ralenti x0,25 · F1 panneau · molette zoom.
+A/D ou ←/→ direction, Q/E pilote arrière/avant, Espace frein AR. R recommencer · 1-6 points de départ (Départ, Double,
+Table, Berm, Virage à plat, Whoops) · C vue de côté · P pause · T ralenti x0,25 · F1 panneau · molette zoom.
 
 ## Étapes futures
 1. ~~Prototype 2D jouable~~ (fait)

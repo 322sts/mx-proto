@@ -47,8 +47,10 @@ void launch(BikeSim& sim, double v) {
 }
 } // namespace
 
-TEST_CASE("le terrain est lisse (pas de marche en hauteur ni en pente, en long comme en travers)") {
+TEST_CASE("circuit : la boucle se referme et le terrain est lisse (pas de marche en hauteur ni en pente)") {
     const Terrain& t = track();
+    const TrackPoint &first = t.trackPath().front(), &last = t.trackPath().back();
+    CHECK(std::hypot(last.x - first.x, last.z - first.z) < 0.2); // dernier point à un pas du départ
     double maxDh = 0, maxDs = 0;
     auto scan = [&](double x0, double z0, double dx, double dz, int n) {
         double hx0, hz0;
@@ -64,15 +66,16 @@ TEST_CASE("le terrain est lisse (pas de marche en hauteur ni en pente, en long c
             hz0 = hz;
         }
     };
-    for (double z : {0.0, 3.0, 6.5}) scan(t.xMin(), z, 0.001, 0, int((t.xMax() - t.xMin()) / 0.001));
-    for (double x : {63.5, 120.0, 175.25, 257.0}) scan(x, -12, 0, 0.001, 24000);
+    // Lignes en long et en travers du circuit : départ/double/table (z ~ 0), whoops (z ~ 77), berms et virages.
+    for (double z : {0.0, 3.0, 6.5, 74.0, 77.0, 12.0}) scan(t.xMin(), z, 0.001, 0, int((t.xMax() - t.xMin()) / 0.001));
+    for (double x : {40.0, 125.0, 133.0, -25.0, -30.0, 0.0}) scan(x, t.zMin(), 0, 0.001, int((t.zMax() - t.zMin()) / 0.001));
     CHECK(maxDh < 0.002); // pente < 63°
     CHECK(maxDs < 0.05);  // pente continue
 }
 
 TEST_CASE("au repos : la moto se pose sur son sag, tient debout et ne vibre pas") {
     BikeSim sim;
-    sim.reset(BikeParams{}, track(), Terrain::kStartX);
+    sim.reset(BikeParams{}, track(), track().spawn("Départ"));
     ride(sim, track(), Inputs{}, 2.0);
     double maxV = 0, maxW = 0;
     for (int i = 0; i < 1000; ++i) {
@@ -96,7 +99,7 @@ TEST_CASE("au repos : la moto se pose sur son sag, tient debout et ne vibre pas"
 TEST_CASE("gaz à fond, pilote sur l'avant : la moto accélère droit et traverse la piste sans exploser") {
     // (Gaz à fond pilote au neutre = looping arrière, comme une vraie 450 : c'est voulu.)
     BikeSim sim;
-    sim.reset(BikeParams{}, track(), Terrain::kStartX);
+    sim.reset(BikeParams{}, track(), track().spawn("Départ"));
     Inputs in;
     in.throttle = 1;
     in.riderLean = 1;
@@ -140,7 +143,7 @@ TEST_CASE("chaîne : l'arrière ne s'écrase pas et ne se détend pas en butée 
 
 TEST_CASE("gaz en l'air : la roue AR accélère et la moto cabre") {
     BikeSim sim;
-    sim.reset(BikeParams{}, track(), Terrain::kStartX);
+    sim.reset(BikeParams{}, track(), track().spawn("Départ"));
     // Moto lancée en l'air : on la soulève de 3 m.
     BikeState& s = const_cast<BikeState&>(sim.state());
     for (RigidBody3D* b : {&s.chassis, &s.fork, &s.swingarm, &s.rider}) b->pos.y += 3;
@@ -196,7 +199,7 @@ TEST_CASE("réglages extrêmes : chaque curseur à ses bornes reste stable") {
             BikeParams p;
             p.*info.field = v;
             BikeSim sim;
-            sim.reset(p, track(), Terrain::kJump1X);
+            sim.reset(p, track(), track().spawn("Double"));
             Inputs in;
             in.throttle = 1;
             in.riderLean = 0.5;

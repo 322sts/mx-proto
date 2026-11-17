@@ -19,7 +19,7 @@ add_library(mx_ui_deps STATIC
 target_include_directories(mx_ui_deps PUBLIC ${imgui_SOURCE_DIR} ${implot_SOURCE_DIR} ${rlimgui_SOURCE_DIR})
 target_link_libraries(mx_ui_deps PUBLIC raylib)
 
-add_executable(mx_sandbox main.cpp)
+add_executable(mx_sandbox main.cpp Render.cpp Render.h)
 target_link_libraries(mx_sandbox PRIVATE mx_physics mx_ui_deps)
 # Run from the repo root so presets/ is found whatever the launch method.
 set_target_properties(mx_sandbox PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
