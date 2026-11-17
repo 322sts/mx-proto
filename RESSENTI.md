@@ -74,3 +74,22 @@ petit saut : fourche 236 mm.
 - Fermeté : assez ? Les grosses réceptions sont-elles devenues sèches (l'amortissement est linéaire : plus ferme
   partout, y compris sur les gros chocs ; si c'est sec, prochaine étape = amortisseur dégressif basse/haute vitesse).
 - Les anciens presets (`presets/tes.ini`) gardent les anciennes valeurs.
+
+### 2026-11-17 — Mieux, mais encore un peu mou
+**Ressenti :**
+- Mieux qu'avant (chaîne + amortissement), mais encore un peu mou.
+
+**Diagnostic :** aucun rebond après une réception (l'amortissement tient) ; le « mou » = l'enfoncement total.
+Essai jambes du pilote plus dures (45 N/mm) : le pilote s'écrase moins, mais la moto encaisse plus et le frein AV
+à fond refait passer par-dessus le guidon -> abandonné.
+
+**Modifications :**
+- `forkSpringRate` 10,8 → 12,0 N/mm, `shockSpringRate` 56 → 62 N/mm (+10 %).
+- Amortissement +5 % (en racine de la raideur, même tenue) : fourche 2100 / 2650, amortisseur 7400 / 11600 N.s/m.
+
+**Mesures après :** sag 47 / 68 mm (au lieu de 53 / 76) ; chute 0,5 m : 121 / 144 mm (au lieu de 131 / 151) ;
+1,5 m : 178 / 218 (au lieu de 190 / 228) ; freinage AV 60 % : fourche 148 mm (au lieu de 162). Anti-squat, wheelie inchangés.
+
+**À revérifier :**
+- Fermeté. On est maintenant sur des ressorts de pilote lourd / supercross. Si c'est encore mou, la piste suivante
+  est un amortissement dégressif (fort à basse vitesse = moto tenue, qui s'ouvre sur les gros chocs).

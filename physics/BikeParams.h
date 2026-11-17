@@ -33,21 +33,21 @@ struct BikeParams {
 
     // --- Fourche (le long de l'axe de direction, deux tubes ensemble) ---
     double forkTravel = 0.300;          // m
-    double forkSpringRate = 10800.0;    // N/m   2 ressorts de 0,55 kg/mm
+    double forkSpringRate = 12000.0;    // N/m   2 ressorts de 0,61 kg/mm
     double forkPreload = 0.005;         // m     précharge ressort
-    double forkCompDamping = 2000.0;    // N.s/m compression
-    double forkRebDamping = 2500.0;     // N.s/m détente
+    double forkCompDamping = 2100.0;    // N.s/m compression
+    double forkRebDamping = 2650.0;     // N.s/m détente
     double forkBottomZone = 0.040;      // m     fin de course où agit le cône anti-talonnage
     double forkBottomStiffness = 1.5e7; // N/m²  F = k * enfoncement² (progressif, pas un mur)
 
     // --- Amortisseur arrière (via biellette progressive) ---
     double rearTravel = 0.310;          // m     débattement à la roue (arc à l'axe)
-    double shockSpringRate = 56000.0;   // N/m   à l'amortisseur (5,7 kg/mm)
+    double shockSpringRate = 62000.0;   // N/m   à l'amortisseur (6,3 kg/mm)
     double shockPreload = 0.008;        // m
     double linkRatioStart = 2.8;        // -     course roue / course amortisseur, détendu
     double linkRatioEnd = 1.85;         // -     en fin de course (plus bas = plus dur = progressif)
-    double shockCompDamping = 7000.0;   // N.s/m à la tige d'amortisseur, compression
-    double shockRebDamping = 11000.0;   // N.s/m détente
+    double shockCompDamping = 7400.0;   // N.s/m à la tige d'amortisseur, compression
+    double shockRebDamping = 11600.0;   // N.s/m détente
     double rearBottomZone = 0.035;      // m     zone de la butée (en course roue)
     double rearBottomStiffness = 1.5e7; // N/m²  à la roue
 
