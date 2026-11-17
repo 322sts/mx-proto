@@ -115,8 +115,8 @@ struct BikeParams {
     // (virage établi + équilibre) et tient le guidon avec ses bras. Le contre-braquage n'est pas
     // programmé : il sort du calcul d'équilibre et de la physique.
     double riderMaxLean = 0.60;         // rad    inclinaison stick à fond à haute vitesse (34° ; tan = 0,67 < mu)
-    double riderLeanResponse = 2.2;     // 1/s    vitesse de bascule voulue par radian d'écart d'inclinaison
-    double riderMaxRollRate = 0.7;      // rad/s  bascule la plus rapide qu'il s'autorise (~40°/s)
+    double riderLeanResponse = 3.2;     // 1/s    vitesse de bascule voulue par radian d'écart d'inclinaison
+    double riderMaxRollRate = 1.0;      // rad/s  bascule la plus rapide qu'il s'autorise (~57°/s)
     double riderSteerGain = 8.0;        // 1/s    vivacité avec laquelle il suit la bascule voulue
     double riderBarHold = 250.0;        // N.m/rad fermeté des bras sur le guidon (ressort vers l'angle voulu)
     double riderMaxSteerTorque = 50.0;  // N.m    force max dans le guidon

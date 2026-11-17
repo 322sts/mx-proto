@@ -39,7 +39,8 @@ on construit la physique dans ce prototype léger (compile + relance en quelques
 - Pilote : corps relié aux 2 repose-pieds et aux 2 poignées par ressorts-amortisseurs + gainage roulis/lacet (genoux) ;
   le stick décale les points d'attache (±25 cm, vitesse limitée) → vrai transfert de poids.
   Direction : le stick gauche demande une courbure de virage (à fond = le plus serré possible : butée de braquage
-  lente, 34° d'inclinaison PAR RAPPORT AU SOL vite → dans un berm penché de β il penche de 34° + β). Le pilote simulé en déduit l'angle de guidon par le pendule inversé
+  lente, 34° d'inclinaison PAR RAPPORT AU SOL vite → dans un berm penché de β il penche de 34° + β ; dévers perçu
+  sous la moto avec 0,2 s de retard, vitesse perçue = vitesse horizontale, pour ne pas dandiner sur les bosses). Le pilote simulé en déduit l'angle de guidon par le pendule inversé
   (δe = L/v² (h φ''_voulu − g tan φ) : virage établi + équilibre) et le tient avec ses bras (ressort 250 N.m/rad) ;
   la chasse, le gyroscope et les pneus agissent toujours → le contre-braquage émerge, rien n'est imposé.
   Angle de guidon plafonné à ce qui sert à cette vitesse (1,5 x virage le plus serré + 3°) : pas de guidonnage.

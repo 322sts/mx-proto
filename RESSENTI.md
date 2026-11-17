@@ -252,3 +252,26 @@ Sur le plat : inchangé.
 **À revérifier :**
 - Berms : ça tourne, ça tient, on ne tombe plus en sortie ?
 - Plat : faut-il encore le stick à fond ? (c'est la limite d'adhérence : 34° ~ 0,67 g sur terre plate)
+
+### 2026-11-18 — Oscille gauche-droite après un coup de stick, se dandine sur les bosses (< 40 km/h)
+**Ressenti :**
+- Pas très bon côté simu : après un coup de guidon ça revient dans l'autre sens, la moto n'est pas stable.
+- Précisé : ça oscille gauche-droite et ça se dandine sur les bosses, surtout lent et moyen (< 40 km/h).
+
+**Diagnostic (banc) :** poussée latérale, stick droite-gauche, pouce qui tremble, whoops de travers : la moto
+seule ne s'auto-entretient pas (poussée : 0,2° max ; droite-gauche lâché : calme en 0,7 s). Deux causes probables :
+- dévers du sol mesuré aux contacts des pneus : il sautait dès qu'une roue quittait le sol (bosses) -> l'inclinaison
+  visée sautait aussi quand on tient le stick -> dandinement ;
+- réponse trop lente (90 % de l'inclinaison en 1,0-1,5 s) : on corrige en retard, puis dans l'autre sens -> balancement
+  entretenu par le pilote humain. Et au banc, à 40°/s la moto n'a pas le temps de pencher dans le berm à 32 km/h.
+
+**Modifications :**
+- code : dévers vu sous la moto (terrain entre les deux roues) avec 0,2 s de temps de réaction ; vitesse perçue =
+  vitesse horizontale (les bosses ne font plus varier la cible).
+- `riderMaxRollRate` 40 → 57°/s, `riderLeanResponse` 2,2 → 3,2 : 90 % de l'inclinaison en 0,75-1,05 s.
+
+**Mesures après :** berm serré stick 60-80 % : aucune chute à 25 et 32 km/h (avant : chute à 32 km/h) ;
+poussée latérale : 0,2° ; droite-gauche lâché : 3-6° de l'autre côté, calme en 0,7 s.
+
+**À revérifier :**
+- Le balancement gauche-droite et le dandinement sur les bosses ont-ils disparu ?

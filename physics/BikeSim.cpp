@@ -354,16 +354,20 @@ void BikeSim::step(const Inputs& raw, const Terrain& terrain, double dt) {
         // Pilote : le stick demande une courbure de virage (stick à fond = le plus serré possible :
         // butée de braquage à basse vitesse, inclinaison max à haute vitesse). L'inclinaison
         // d'équilibre de ce virage est tan φ* = v² κ / g.
-        const double v = std::max(s_.speed, 1.0), L = p.wheelbase;
+        // Vitesse perçue = vitesse horizontale (les bosses ne doivent pas faire varier la cible).
+        const double v = std::max(std::hypot(C.vel.x, C.vel.z), 1.0), L = p.wheelbase;
         const double rMin = 1.5 * L / std::tan(p.steerLock * std::cos(p.rakeAngle)); // virage le plus serré tenable
-        // Dévers du sol sous les roues (berm) : l'adhérence limite l'inclinaison par rapport au SOL,
-        // pas à la verticale. Dans un berm penché de β vers l'intérieur, il peut pencher de
-        // riderMaxLean + β et tourner bien plus serré : c'est tout l'intérêt d'un virage relevé.
-        Vec3 nGround{};
-        for (const WheelState* w : {&s_.front, &s_.rear})
-            if (w->contact) nGround += w->normal;
-        nGround = length(nGround) > 0.5 ? normalize(nGround) : kY;
-        const double bank = std::atan2(dot(nGround, rightH), nGround.y); // + = sol penché vers la droite
+        // Dévers du sol (berm) : l'adhérence limite l'inclinaison par rapport au SOL, pas à la verticale.
+        // Dans un berm penché de β vers l'intérieur, il peut pencher de riderMaxLean + β et tourner bien
+        // plus serré. Le pilote "voit" le dévers sous la moto avec un temps de réaction (0,2 s) : une
+        // mesure instantanée sautait à chaque bosse (roue en l'air) et faisait dandiner la moto.
+        {
+            const Vec3 mid = (s_.front.center + s_.rear.center) * 0.5;
+            const Vec3 n = terrain.normal(mid.x, mid.z);
+            const double seen = std::atan2(dot(n, rightH), n.y); // + = sol penché vers la droite
+            s_.groundBank += (seen - s_.groundBank) * std::min(1.0, dt / 0.2);
+        }
+        const double bank = s_.groundBank;
         const double maxLean = clampd(p.riderMaxLean + (in.steer >= 0 ? bank : -bank), 0.0, 1.2);
         const double kappa = in.steer * std::min(1.0 / rMin, kGravity * std::tan(maxLean) / (v * v));
         const double want = std::atan(v * v * kappa / kGravity);

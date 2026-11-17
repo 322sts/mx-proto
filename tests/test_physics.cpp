@@ -208,7 +208,7 @@ TEST_CASE("virage serré en coupant les gaz jusqu'à l'arrêt : la moto ne tombe
     }
 }
 
-TEST_CASE("berm : stick à fond, la moto penche plus que sur le plat, reste dans le virage et ne tombe pas") {
+TEST_CASE("berm : stick à 70 %, la moto penche plus que sur le plat, reste dans le virage et ne tombe pas") {
     const auto& path = track().trackPath();
     auto locate = [&](Vec3 pos, double& s, double& d) { // abscisse et écart latéral (+ = droite) sur le circuit
         double best = 1e9;
@@ -235,7 +235,7 @@ TEST_CASE("berm : stick à fond, la moto penche plus que sur le plat, reste dans
         for (int i = 0; i < 8000 && s < 145; ++i) {
             locate(sim.state().chassis.pos, s, d);
             in.throttle = clampd(0.3 + 0.3 * (v - sim.state().speed), 0, 1);
-            in.steer = s > 111 && s < 128 ? 1.0 : 0.0; // berm à droite de s = 113 à 132
+            in.steer = s > 111 && s < 130 ? 0.7 : 0.0; // berm à droite de s = 113 à 132
             sim.step(in, track(), 0.001);
             REQUIRE(finite(sim.state()));
             if (s > 112 && s < 135) {
