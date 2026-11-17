@@ -134,3 +134,21 @@ roue ralentit, le nez descend. L'effet = inertie de la roue × variation de sa v
 **À revérifier :**
 - Assez marqué ? Note : le vilebrequin est compté comme s'il tournait avec la roue (inertie × rapport²), ce qui
   donne déjà un effet en l'air plus fort qu'une vraie moto ; à corriger avec la boîte (étape 4), il faudra alors recaler.
+
+### 2026-11-17 — 3D : entrée de virage bien trop vive
+**Ressenti :**
+- Entrée en virage bien trop vive.
+- Ligne droite à plat sans toucher la direction : pas trop mal. Sauts : pas mal.
+
+**Mesures avant (stick à fond d'un coup) :** 90 % de l'inclinaison visée en 0,4-0,8 s (bascule jusqu'à 85°/s) ;
+à 22 km/h stick à fond, la moto dépassait la cible et tombait.
+
+**Modifications (pilote simulé) :**
+- `riderMaxRollRate` 85 → 46°/s : il s'autorise une bascule moins brutale.
+- `riderLeanResponse` 4 → 2,5 /s : il vise moins vite l'inclinaison demandée.
+- `riderSteerGain` 40 → 60 N.m.s/rad : il tient plus fermement le guidon (sinon l'inclinaison finale dépasse la cible de 4-5°).
+
+**Mesures après :** 90 % de l'inclinaison en ~1,0-1,1 s ; inclinaison finale 36-37° pour 34° visés ; plus de chute à 22 km/h.
+
+**À revérifier :**
+- Entrée de virage : bonne, encore trop vive, trop molle ?
