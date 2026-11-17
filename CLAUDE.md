@@ -25,7 +25,7 @@ on construit la physique dans ce prototype léger (compile + relance en quelques
 - Fourche : ressort préchargé, amortissement compression/détente, cône anti-talonnage k·p².
 - Arrière : rapport de biellette linéaire en course roue (2,8 → 1,85), course amortisseur = ∫dx/LR, force roue = F_amorto/LR.
 - Pneus : contact au point du sol le plus proche, ressort radial + amortissement + jante ; Fx = μ(glissement)·N,
-  courbe terre (pic 0,85 à 20 %, puis décroissance vers 0,65) ; force bornée à celle qui annule le glissement en un pas (stabilité).
+  courbe terre (pic 0,89 à 20 %, puis décroissance vers 0,68) ; force bornée à celle qui annule le glissement en un pas (stabilité).
 - Pilote : corps relié aux repose-pieds et au guidon par ressorts-amortisseurs ; le stick décale les points d'attache
   (±25 cm, vitesse limitée) → vrai transfert de poids.
 - Moteur : courbe couple/régime, rapport unique 13:1, embrayage virtuel qui patine sous 4000 tr/min, frein moteur,

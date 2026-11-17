@@ -93,3 +93,26 @@ Essai jambes du pilote plus dures (45 N/mm) : le pilote s'écrase moins, mais la
 **À revérifier :**
 - Fermeté. On est maintenant sur des ressorts de pilote lourd / supercross. Si c'est encore mou, la piste suivante
   est un amortissement dégressif (fort à basse vitesse = moto tenue, qui s'ouvre sur les gros chocs).
+
+### 2026-11-17 — Plus de stoppie au freinage, la moto ne lève plus assez aux gaz
+**Ressenti :**
+- Bien mieux en fermeté.
+- Au freinage : plus du tout de stoppie ; il en faut un peu pour être réaliste.
+- Atterrir trop long, sur le plat : ça rebondit, « pas trop mal » -> on garde.
+- À l'accélération : la moto doit lever un peu, pas énormément.
+
+**Diagnostic :** wheelie et stoppie sont tous les deux limités par l'adhérence (il faut ~1 g de poussée ou de
+freinage pour lever une roue). À μ 0,85 le pneu décroche avant ; à μ ≥ 0,93 tout boucle, même pilote couché sur le guidon.
+La transition est très serrée : c'est physique, un wheelie / stoppie est instable et se dose au pilotage.
+
+**Modifications :**
+- `tirePeakMu` 0,85 → 0,89, `tireSlideMu` 0,65 → 0,68.
+
+**Mesures après (banc, commandes figées, 1,5 s) :**
+- Frein AV à fond à 50 km/h : pilote en arrière = stoppie 13 cm ; neutre = 9 cm ; sur l'avant = passe par-dessus.
+- Gaz à fond depuis l'arrêt : pilote neutre = la roue AV monte franchement ; mi-avant ou tout avant = 1-2 cm.
+- Gaz à fond lancé à 40 km/h : neutre / mi-avant = lève ; tout sur l'avant = reste collé.
+- Fermeté, chutes, plongée au freinage : inchangées.
+
+**À revérifier :**
+- Stoppie et wheelie dosables au ressenti (gâchettes + stick) ? Trop ou pas assez ?

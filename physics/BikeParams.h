@@ -57,9 +57,9 @@ struct BikeParams {
     double tireDamping = 400.0;           // N.s/m amortissement radial
     double tireRimDeflection = 0.060;     // m     écrasement où la jante commence à taper
     double tireRimStiffness = 1.0e6;      // N/m   raideur ajoutée une fois sur la jante
-    double tirePeakMu = 0.85;             // -     adhérence max (terre)
+    double tirePeakMu = 0.89;             // -     adhérence max (terre)
     double tirePeakSlip = 0.20;           // -     taux de glissement au pic
-    double tireSlideMu = 0.65;            // -     adhérence en patinage / blocage complet
+    double tireSlideMu = 0.68;            // -     adhérence en patinage / blocage complet
     double tireSlipFalloff = 0.40;        // -     vitesse de baisse après le pic (en taux de glissement)
     double tireLowSpeed = 2.0;            // m/s   plancher du dénominateur du glissement (basse vitesse)
     double rollingResistance = 0.04;      // -     coefficient de résistance au roulement (terre)
