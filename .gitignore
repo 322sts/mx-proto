@@ -1,0 +1,12 @@
+# CMake / Visual Studio
+build/
+out/
+.vs/
+CMakeUserPresets.json
+*.user
+*.suo
+*.vcxproj*
+*.sln
+CMakeCache.txt
+CMakeFiles/
+imgui.ini
