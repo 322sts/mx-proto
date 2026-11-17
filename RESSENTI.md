@@ -275,3 +275,11 @@ poussée latérale : 0,2° ; droite-gauche lâché : 3-6° de l'autre côté, ca
 
 **À revérifier :**
 - Le balancement gauche-droite et le dandinement sur les bosses ont-ils disparu ?
+
+### 2026-11-18 — Sensibilité de direction trop faible
+**Ressenti :** il faut pousser le stick à fond pour tourner.
+
+**Modification (manette, pas physique) :** `Sensibilité direction` x 1,6 dans le panneau F1 (curseur 1 à 3) : le
+virage le plus serré est atteint aux 2/3 du stick au lieu du bout.
+
+**À revérifier :** bonne sensibilité ? (ajustable en direct dans F1)
