@@ -81,7 +81,10 @@ Table, Berm, Virage à plat, Whoops) · C vue de côté · P pause · T ralenti 
 
 ## Étapes futures
 1. ~~Prototype 2D jouable~~ (fait)
-2. 3D avec direction et inclinaison latérale (en cours : moto 3D jouable, à peaufiner au ressenti)
+2. ~~3D avec direction et inclinaison latérale~~ (fait ; à peaufiner au ressenti)
+
+**Prochaine étape choisie (2026-11-18) : passer directement à l'intégration Unreal Engine 5 (7.), les étapes 3 à 6 ensuite.**
+
 3. Pilote sur 2 axes (avant/arrière + gauche/droite, haut/bas)
 4. Boîte de vitesses + embrayage (+ brin inférieur de chaîne en frein moteur)
 5. Terrain déformable (ornières, terre qui se creuse)
