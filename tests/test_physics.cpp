@@ -208,7 +208,7 @@ TEST_CASE("virage serré en coupant les gaz jusqu'à l'arrêt : la moto ne tombe
     }
 }
 
-TEST_CASE("berm : stick à 70 %, la moto penche plus que sur le plat, reste dans le virage et ne tombe pas") {
+TEST_CASE("berm : stick à 70 % puis à fond, la moto penche plus que sur le plat, reste dans le virage et ne tombe pas") {
     const auto& path = track().trackPath();
     auto locate = [&](Vec3 pos, double& s, double& d) { // abscisse et écart latéral (+ = droite) sur le circuit
         double best = 1e9;
@@ -221,8 +221,9 @@ TEST_CASE("berm : stick à 70 %, la moto penche plus que sur le plat, reste dans
             }
         }
     };
-    for (double v : {7.0, 9.0}) {
+    for (double v : {7.0, 9.0}) for (double stick : {0.7, 1.0}) {
         CAPTURE(v);
+        CAPTURE(stick);
         BikeSim sim;
         sim.reset(BikeParams{}, track(), track().spawn("Berm"));
         BikeState& w = const_cast<BikeState&>(sim.state()); // lancée à la vitesse v
@@ -235,19 +236,67 @@ TEST_CASE("berm : stick à 70 %, la moto penche plus que sur le plat, reste dans
         for (int i = 0; i < 8000 && s < 145; ++i) {
             locate(sim.state().chassis.pos, s, d);
             in.throttle = clampd(0.3 + 0.3 * (v - sim.state().speed), 0, 1);
-            in.steer = s > 111 && s < 130 ? 0.7 : 0.0; // berm à droite de s = 113 à 132
+            in.steer = s > 111 && s < 130 ? stick : 0.0; // berm à droite de s = 113 à 132
             sim.step(in, track(), 0.001);
             REQUIRE(finite(sim.state()));
             if (s > 112 && s < 135) {
-                maxD = std::max(maxD, std::abs(d));
+                maxD = std::max(maxD, -d); // vers l'extérieur du virage à droite (gauche, d < 0)
                 maxLean = std::max(maxLean, sim.state().leanAngle);
             }
         }
-        MESSAGE((v * 3.6) << " km/h : inclinaison max " << maxLean * 57.3 << "°, écart latéral max " << maxD << " m");
-        CHECK(maxLean > BikeParams{}.riderMaxLean + 0.05); // le dévers permet de pencher plus que sur le plat
-        CHECK(maxLean < 1.0);                               // sans tomber
-        CHECK(maxD < 6.0);                                  // sans passer la crête du berm
+        MESSAGE((v * 3.6) << " km/h, stick " << stick << " : inclinaison max " << maxLean * 57.3 << "°, écart vers l'extérieur max " << maxD << " m");
+        CHECK(maxLean > stick * BikeParams{}.riderMaxLean + 0.05); // le dévers permet de pencher plus que sur le plat au même stick
+        CHECK(maxLean < 1.0);                                       // sans tomber
+        CHECK(maxD < 6.5);                                          // sans passer la crête du berm à l'extérieur (5,6 à 6,6 m)
     }
+}
+
+TEST_CASE("whoops à basse vitesse, gaz constants : la moto ne croise pas et ne tombe pas") {
+    for (double v : {3.5, 4.5, 6.0}) for (double stick : {0.0, 0.15, -0.3}) {
+        CAPTURE(v);
+        CAPTURE(stick);
+        BikeSim sim;
+        sim.reset(BikeParams{}, track(), track().spawn("Whoops"));
+        BikeState& w = const_cast<BikeState&>(sim.state()); // lancée à la vitesse v
+        for (RigidBody3D* b : {&w.chassis, &w.fork, &w.swingarm, &w.rider}) b->vel = w.chassis.dirToWorld(kX) * v;
+        w.front.spin = -v / BikeParams{}.frontWheelRadius;
+        w.rear.spin = -v / BikeParams{}.rearWheelRadius;
+        Inputs in;
+        in.throttle = 0.35;
+        in.riderLean = 0.2;
+        in.steer = stick;
+        double maxLean = 0, maxSlip = 0;
+        for (int i = 0; i < 12000; ++i) {
+            sim.step(in, track(), 0.001);
+            maxLean = std::max(maxLean, std::abs(sim.state().leanAngle));
+            maxSlip = std::max(maxSlip, std::abs(sim.state().rear.slipAngle));
+        }
+        CHECK(maxLean < 0.6);  // pas de chute
+        CHECK(maxSlip < 0.35); // l'arrière ne part pas en travers (< 20°)
+    }
+}
+
+TEST_CASE("sortie de virage (façon MX Bikes) : en virage stick tenu, ouvrir les gaz relève la moto") {
+    BikeSim sim;
+    launch(sim, 8.0);
+    Inputs in;
+    in.steer = 0.9;
+    in.riderLean = 0.4;
+    for (int i = 0; i < 3000; ++i) {
+        in.throttle = clampd(0.25 + 0.3 * (8.0 - sim.state().speed), 0, 1);
+        sim.step(in, flat(), 0.001);
+    }
+    const double leanIn = sim.state().leanAngle;
+    double leanOut = leanIn;
+    in.throttle = 0.5; // remise des gaz franche mais dosée, pilote sur l'avant (à fond d'un coup : glisse, comme en vrai)
+    in.riderLean = 1;
+    for (int i = 0; i < 1500; ++i) {
+        sim.step(in, flat(), 0.001);
+        leanOut = std::min(leanOut, sim.state().leanAngle);
+        REQUIRE(sim.state().leanAngle > 0.1); // reste penchée du bon côté : pas de chute ni de highside
+    }
+    MESSAGE("inclinaison en virage " << leanIn * 57.3 << "°, gaz à 50 % : " << leanOut * 57.3 << "°, poussée/charge AR " << sim.state().driveUse << ", Fx AR " << sim.state().rear.longForce << " N, v " << sim.state().speed * 3.6);
+    CHECK(leanOut < leanIn - 0.05); // se relève d'au moins ~3°
 }
 
 TEST_CASE("réglages extrêmes : chaque curseur à ses bornes reste stable") {

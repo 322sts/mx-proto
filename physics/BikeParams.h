@@ -74,6 +74,7 @@ struct BikeParams {
     double tireSlipFalloff = 0.40;        // -     vitesse de baisse après le pic (en taux de glissement)
     double tirePeakSlipAngle = 0.15;      // -     tan(dérive) au pic d'adhérence latérale (~8,5°)
     double tireCamberThrust = 0.7;        // N/N/rad poussée de carrossage (pneu incliné qui pousse vers l'intérieur)
+    double tireSpinLatCap = 3.0;          // -     patinage (en glissements au pic) au-delà duquel l'accroche latérale ne baisse plus
     double tireCrownRadius = 0.05;        // m     rayon du profil arrondi du pneu (contact qui se décale en angle)
     double tireLowSpeed = 2.0;            // m/s   plancher du dénominateur du glissement (basse vitesse)
     double rollingResistance = 0.04;      // -     coefficient de résistance au roulement (terre)
@@ -114,7 +115,8 @@ struct BikeParams {
     // Direction : le stick demande une courbure de virage ; le pilote en déduit l'angle de guidon
     // (virage établi + équilibre) et tient le guidon avec ses bras. Le contre-braquage n'est pas
     // programmé : il sort du calcul d'équilibre et de la physique.
-    double riderMaxLean = 0.60;         // rad    inclinaison stick à fond à haute vitesse (34° ; tan = 0,67 < mu)
+    double riderMaxLean = 0.66;         // rad    inclinaison stick à fond, par rapport au sol (38° ; tan = 0,78 < mu)
+    double riderBermTrust = 0.6;        // -      part du dévers d'un berm sur laquelle il compte pour pencher plus
     double riderLeanResponse = 3.2;     // 1/s    vitesse de bascule voulue par radian d'écart d'inclinaison
     double riderMaxRollRate = 1.0;      // rad/s  bascule la plus rapide qu'il s'autorise (~57°/s)
     double riderSteerGain = 8.0;        // 1/s    vivacité avec laquelle il suit la bascule voulue

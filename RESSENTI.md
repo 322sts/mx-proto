@@ -283,3 +283,31 @@ poussée latérale : 0,2° ; droite-gauche lâché : 3-6° de l'autre côté, ca
 virage le plus serré est atteint aux 2/3 du stick au lieu du bout.
 
 **À revérifier :** bonne sensibilité ? (ajustable en direct dans F1)
+
+### 2026-11-18 — Choix MX Bikes, ne tourne pas assez, whoops : la moto croise à basse vitesse
+**Ressenti :**
+- Préférence pour la physique MX Bikes (la moto se relève toute seule en accélérant en sortie de virage).
+- Ne tourne toujours pas assez ; sensibilité x3 bien mieux.
+- Dans les whoops à basse vitesse la moto croise les skis et on tombe.
+
+**Diagnostic (banc whoops 9-22 km/h) :** sans appui sur la roue AV (whoops), le pilote continuait d'équilibrer au
+guidon -> braquait de 20-38° en l'air, l'avant retombait en travers ; l'arrière retombait en patinant (glissement
+200-450 %) et le modèle de pneu ne lui laissait plus aucune accroche latérale -> l'arrière partait.
+
+**Modifications :**
+- manette : sensibilité de direction x3 par défaut (curseur 1 à 5 dans F1).
+- code : sans appui sur la roue AV, le pilote ne garde que 30 % de sa correction au guidon (presque droit).
+- pneu : `tireSpinLatCap` = 3 : au-delà de 60 % de patinage, l'accroche latérale ne baisse plus (crampons dans la terre).
+- code (MX Bikes) : le stick commande l'inclinaison ; sur les gaz le pilote relève la moto selon le cercle
+  d'adhérence du pneu AR (poussée / charge AR, et roue qui patine = plus de marge).
+- `riderMaxLean` 34 -> 38° (par rapport au sol) ; `riderBermTrust` = 60 % du dévers (stick à fond dans un berm sans plonger
+  à la corde et décrocher).
+
+**Mesures après :** whoops 13-22 km/h, gaz constants, stick neutre / un peu / opposé : aucune chute, dérive AR < 20°.
+Sortie de virage à 29 km/h, gaz 50 % : la moto passe de 32 à 28,6° et accélère proprement. Berm serré 25-32 km/h,
+stick 70 % ou à fond : pas de chute, sous la crête.
+Limite : gaz 70-100 % d'un coup en plein virage à 30 km/h -> l'arrière part en glisse et la moto tombe (comme une vraie
+450 ouverte en grand sur la terre) : doser la gâchette.
+
+**À revérifier :**
+- Sortie de virage sur les gaz : ça se relève comme MX Bikes ? Les whoops passent ?

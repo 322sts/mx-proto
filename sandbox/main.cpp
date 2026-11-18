@@ -33,7 +33,7 @@ struct Controls {
     bool triggerArmed[2] = {false, false}; // certaines manettes renvoient 0 tant que la gâchette n'a pas bougé
     double throttleKb = 0, frontKb = 0, rearBrake = 0, steerKb = 0;
     float rearBrakeRampTime = 0.4f; // s pour serrer à fond le frein AR (bouton tout-ou-rien)
-    float steerSensitivity = 1.6f;  // stick x sensibilité : à 1,6 le virage le plus serré est atteint aux 2/3 du stick
+    float steerSensitivity = 3.0f;  // stick x sensibilité : à 3 le virage le plus serré est atteint au tiers du stick
 
     double trigger(int i, GamepadAxis axis) {
         const float v = GetGamepadAxisMovement(0, axis); // -1 relâchée .. +1 enfoncée
@@ -285,7 +285,7 @@ int main() {
             if (!status.empty()) ImGui::TextDisabled("%s", status.c_str());
             ImGui::Checkbox("Vecteurs de force aux contacts", &showForces);
             ImGui::SliderFloat("Rampe frein AR (LB)", &controls.rearBrakeRampTime, 0.05f, 1.5f, "%.2f s");
-            ImGui::SliderFloat("Sensibilité direction", &controls.steerSensitivity, 1.0f, 3.0f, "x %.1f");
+            ImGui::SliderFloat("Sensibilité direction", &controls.steerSensitivity, 1.0f, 5.0f, "x %.1f");
 
             const char* section = nullptr;
             bool open = false;

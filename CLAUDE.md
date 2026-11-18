@@ -20,7 +20,7 @@ on construit la physique dans ce prototype léger (compile + relance en quelques
   décor (piquets, bottes de paille, grille de départ, arbres), ombre de la moto, moto et pilote détaillés. Dessin seulement.
 - `tests/` — doctest : terrain lisse, repos sans vibration, accélération, ligne droite, anti-squat, gaz en l'air,
   virage établi (tan φ = v²/gR), contre-braquage émergent, virage serré jusqu'à l'arrêt sans chute, berm passé stick
-  à fond, chaque curseur à ses bornes.
+  à 70 % et à fond, whoops lents sans croiser, sortie de virage qui se relève sur les gaz, chaque curseur à ses bornes.
 - Dépendances via FetchContent, versions épinglées : raylib 5.5, imgui 1.93.0, implot 1.1, rlImGui @5c17e70, doctest 2.5.3.
 
 ## Modèle physique (étape 2, 3D)
@@ -36,13 +36,16 @@ on construit la physique dans ce prototype léger (compile + relance en quelques
   ressort radial + amortissement + jante. Glissement combiné (ellipse) : glissement longitudinal / 20 % et dérive /
   tan 8,5°, plus le carrossage en dérive équivalente (poussée 0,7 N/N/rad) ; μ(s) courbe terre (pic 0,89, glisse 0,68) ;
   forces bornées à celles qui annulent le glissement en un pas (stabilité).
+  Roue qui patine : au-delà de 3 glissements au pic, l'accroche latérale ne baisse plus (crampons dans la terre).
 - Pilote : corps relié aux 2 repose-pieds et aux 2 poignées par ressorts-amortisseurs + gainage roulis/lacet (genoux) ;
   le stick décale les points d'attache (±25 cm, vitesse limitée) → vrai transfert de poids.
-  Direction : le stick gauche demande une courbure de virage (à fond = le plus serré possible : butée de braquage
-  lente, 34° d'inclinaison PAR RAPPORT AU SOL vite → dans un berm penché de β il penche de 34° + β ; dévers perçu
-  sous la moto avec 0,2 s de retard, vitesse perçue = vitesse horizontale, pour ne pas dandiner sur les bosses). Le pilote simulé en déduit l'angle de guidon par le pendule inversé
+  Direction (façon MX Bikes) : le stick gauche demande une inclinaison (fraction du maximum : 38° par rapport au SOL,
+  + 60 % du dévers d'un berm ; limitée à basse vitesse par la butée de braquage). Sur les gaz, le pilote relève la
+  moto selon le cercle d'adhérence du pneu AR (il reste sqrt(mu² - (Fx/N)²) pour l'angle ; roue qui patine = plus de
+  marge) : la moto se relève en sortie de virage. Le pilote simulé en déduit l'angle de guidon par le pendule inversé
   (δe = L/v² (h φ''_voulu − g tan φ) : virage établi + équilibre) et le tient avec ses bras (ressort 250 N.m/rad) ;
-  la chasse, le gyroscope et les pneus agissent toujours → le contre-braquage émerge, rien n'est imposé.
+  sans appui sur la roue AV (whoops, sauts) il ne garde que 30 % de cette correction (guidon presque droit).
+  La chasse, le gyroscope et les pneus agissent toujours → le contre-braquage émerge, rien n'est imposé.
   Angle de guidon plafonné à ce qui sert à cette vitesse (1,5 x virage le plus serré + 3°) : pas de guidonnage.
   Presque à l'arrêt (< 1,5 m/s), il tourne simplement le guidon comme le stick (droite = braque à droite).
   Pied à terre sous 1,5 m/s (contacts ressort aux pieds, ne portent que si la moto penche).

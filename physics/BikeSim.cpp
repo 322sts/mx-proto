@@ -212,8 +212,12 @@ void BikeSim::tire(WheelState& w, RigidBody3D& carrier, Vec3 axle, Vec3 a, doubl
     double Fx = 0, Fy = 0;
     if (s > 1e-9) {
         const double F = gripCurve(s, p_) * N;
-        Fx = F * sx / s;
-        Fy = F * sy / s;
+        // Partage entre long et latéral : sur la terre, une roue qui patine fort garde de l'accroche
+        // latérale (les crampons s'enfoncent et labourent). Au-delà de tireSpinLatCap (en glissements
+        // au pic), le patinage n'"avale" plus davantage la force latérale.
+        const double sxd = clampd(sx, -p_.tireSpinLatCap, p_.tireSpinLatCap), sd = std::hypot(sxd, sy);
+        Fx = F * sxd / sd;
+        Fy = F * sy / sd;
     }
     // Limite "adhérence statique" : jamais plus que la force qui annule le glissement en un pas
     // (sinon il s'inverse à chaque pas -> vibration). Rend la moto stable à l'arrêt.
@@ -351,9 +355,7 @@ void BikeSim::step(const Inputs& raw, const Terrain& terrain, double dt) {
         const Vec3 rightH = normalize(cross(fwd, kY));
         const double lean = std::atan2(dot(up, rightH), dot(up, kY));
         const double leanRate = dot(C.angVel, normalize(Vec3{fwd.x, 0, fwd.z}));
-        // Pilote : le stick demande une courbure de virage (stick à fond = le plus serré possible :
-        // butée de braquage à basse vitesse, inclinaison max à haute vitesse). L'inclinaison
-        // d'équilibre de ce virage est tan φ* = v² κ / g.
+        // Pilote : le stick demande une inclinaison (à fond = le maximum que l'adhérence permet).
         // Vitesse perçue = vitesse horizontale (les bosses ne doivent pas faire varier la cible).
         const double v = std::max(std::hypot(C.vel.x, C.vel.z), 1.0), L = p.wheelbase;
         const double rMin = 1.5 * L / std::tan(p.steerLock * std::cos(p.rakeAngle)); // virage le plus serré tenable
@@ -368,9 +370,26 @@ void BikeSim::step(const Inputs& raw, const Terrain& terrain, double dt) {
             s_.groundBank += (seen - s_.groundBank) * std::min(1.0, dt / 0.2);
         }
         const double bank = s_.groundBank;
-        const double maxLean = clampd(p.riderMaxLean + (in.steer >= 0 ? bank : -bank), 0.0, 1.2);
-        const double kappa = in.steer * std::min(1.0 / rMin, kGravity * std::tan(maxLean) / (v * v));
-        const double want = std::atan(v * v * kappa / kGravity);
+        // Cercle d'adhérence du pneu AR : toute la poussée passe par lui, et il porte aussi sa part de
+        // l'effort latéral. Il reste donc sqrt(mu² - (Fx/N)²) pour tenir l'angle ; le pilote relève la
+        // moto d'autant (sortie de virage façon MX Bikes, par la physique). Rapporter la poussée au
+        // poids total sous-estimait l'usure du pneu AR : glisse puis highside au banc.
+        // Poussée lue au pneu AR (Fx/N), filtrée sur 0,15 s, gelée quand la roue AR est en l'air.
+        // Une roue qui patine au-delà du pic n'a plus de marge : il relève la moto pour retrouver de la
+        // motricité (sinon glisse puis highside au banc quand l'arrière raccroche).
+        if (s_.rear.normalForce > 200) {
+            const double spin = clampd(s_.rear.slipRatio / p.tirePeakSlip, 0, 1) * p.tirePeakMu;
+            const double use = std::max(std::max(0.0, s_.rear.longForce) / s_.rear.normalForce, spin);
+            s_.driveUse += (use - s_.driveUse) * std::min(1.0, dt / 0.15);
+        }
+        const double latBudget = std::sqrt(std::max(0.0, sq(p.tirePeakMu) - sq(s_.driveUse)));
+        // Il ne compte que sur une part du dévers (riderBermTrust) : en plongeant vers la corde, moins
+        // relevée, il garde de la marge (sinon l'avant décroche, constaté au banc stick à fond).
+        const double maxLean = clampd(std::atan(std::min(std::tan(p.riderMaxLean), latBudget)) + p.riderBermTrust * (in.steer >= 0 ? bank : -bank), 0.0, 1.2);
+        // Le stick commande l'inclinaison (fraction du maximum) : accélérer ne la fait plus augmenter.
+        // À basse vitesse, limitée au virage le plus serré permis par la butée de braquage.
+        const double lowCap = std::atan(v * v / (kGravity * rMin));
+        const double want = clampd(in.steer * maxLean, -lowCap, lowCap);
         // Il choisit une bascule voulue (vitesse de roulis plafonnée), d'où une accélération de roulis
         // voulue, et en déduit l'angle de guidon par le modèle du pendule inversé sur ses roues :
         //   h φ'' = g tan φ + (v²/L) δe   (δe = braquage effectif, + = à gauche)
@@ -395,7 +414,10 @@ void BikeSim::step(const Inputs& raw, const Terrain& terrain, double dt) {
         // Presque à l'arrêt (pieds posés), braquer ne fait plus pencher la moto : il tourne simplement
         // le guidon comme demandé par le stick (droite = braque à droite).
         const double w = clampd(s_.speed - 0.5, 0, 1);
-        const double deltaCmd = w * deltaLean + (1 - w) * (-in.steer * p.steerLock);
+        // Sans appui sur la roue AV (whoops, sauts), corriger au guidon ne sert à rien : il garde le guidon
+        // droit, sinon l'avant retombe braqué en travers (moto qui "croise").
+        s_.frontGrip += (std::min(1.0, s_.front.normalForce / 300.0) - s_.frontGrip) * std::min(1.0, dt / 0.05);
+        const double deltaCmd = w * (0.3 + 0.7 * s_.frontGrip) * deltaLean + (1 - w) * (-in.steer * p.steerLock);
         const double tauRider = clampd(p.riderBarHold * (deltaCmd - delta) - 0.05 * p.riderBarHold * deltaDot,
                                        -p.riderMaxSteerTorque, p.riderMaxSteerTorque);
         const double tau = tauRider - p.steerDamping * deltaDot;

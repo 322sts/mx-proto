@@ -48,6 +48,8 @@ struct BikeState {
     double leanAngle = 0;                 // rad    inclinaison de la moto (positif = à droite)
     double steerTorque = 0;               // N.m    couple du pilote dans le guidon
     double feetDown = 0;                  // 0..1   pieds posés (basse vitesse)
+    double driveUse = 0;                  // -      poussée du pneu AR / sa charge, perçue par le pilote
+    double frontGrip = 0;                 // 0..1   appui perçu sur la roue AV
     double groundBank = 0;                // rad    dévers du sol tel que le pilote le perçoit (+ = penché à droite)
     Inputs inputs;                        // commandes du dernier pas
 };
